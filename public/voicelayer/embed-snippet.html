@@ -1,5 +1,5 @@
 <!--
-  VoiceLayer — install snippet
+  VoiceLayer — install snippet (v0.2.0)
   ------------------------------------------------------------------
   1. Upload voicelayer.js and voicelayer.css to the SAME folder on your host.
   2. Paste the ONE line below just before </body> on any page (or into your
@@ -9,21 +9,29 @@
 <script src="https://YOUR-SITE.example/voicelayer/voicelayer.js" defer></script>
 
 <!--
-  OPTIONAL — customise without editing the JS file. Put this ABOVE the line above:
+  OPTIONAL - customise without editing the JS file. Put this ABOVE the line above:
 
   <script>
     window.VoiceLayerConfig = {
-      language: 'en-US',                       // speech language
-      greeting: 'Hi! How can I help?',
+      language: 'auto',                   // 'auto' | 'en' | 'es' | 'es-MX' ... (auto = saved choice > <html lang> > browser)
+      languages: ['en', 'es'],            // languages in the switcher
+      greeting: { en: 'Hi! How can I help?', es: 'Hola! En que te ayudo?' },
       orbPosition: { corner: 'bottom-left', offsetX: 24, offsetY: 24 },
-      speakGreeting: false,
-      debug: false                             // true = show the "force state" review buttons
+      apiBase: '/api/voice',              // enables Deepgram (better accuracy, natural voice) + the owner kill switch
+      provider: 'auto',                   // 'auto' | 'browser' | 'deepgram'
+      hotkey: 'Alt+Shift+V',              // bring-back / toggle shortcut ('' = none)
+      bubble: true,                       // one silent, dismissible hint per session
+      enabled: true,                      // false = widget does nothing (static kill switch)
+      debug: false
     };
   </script>
 
-  Or use data attributes on the script tag itself:
-  <script src="voicelayer.js" data-language="en-GB" data-corner="bottom-left" defer></script>
+  Or use data attributes on the script tag:
+  <script src="voicelayer.js" data-language="es" data-api="/api/voice" data-corner="bottom-left" defer></script>
 
-  Local testing: just double-click demo.html (Chrome/Edge). Microphone permission
-  works best from http://localhost or https:// — see README.md.
+  A "bring it back" link anywhere on your page (for visitors who turned it off):
+  <a href="#" data-voicelayer-open>Voice help</a>
+
+  Local testing: double-click demo.html (Chrome/Edge). Mic permission works best from
+  http://localhost or https:// - see README.md.
 -->

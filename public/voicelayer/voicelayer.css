@@ -24,6 +24,7 @@
 .vl-root.vl-ready { visibility: visible; }
 
 button { font: inherit; color: inherit; cursor: pointer; }
+[hidden] { display: none !important; }
 button:focus-visible, input:focus-visible {
   outline: 2px solid #9cc3ff; outline-offset: 2px;
 }
@@ -178,7 +179,7 @@ button:focus-visible, input:focus-visible {
 .vl-line.bot  { align-self: flex-start; background: rgba(40,70,160,.45); border: 1px solid rgba(140,180,255,.18); }
 .vl-line.user { align-self: flex-end;   background: rgba(96,165,250,.30); border: 1px solid rgba(160,200,255,.28); }
 .vl-line.sys  { align-self: center; background: transparent; color: #a9bde6; font-size: 12px; text-align: center; padding: 2px 6px; }
-.vl-line.verified::after { content: "  ✓ verified by read-back"; color: #8fe3ff; font-size: 11px; }
+.vl-line.verified::after { content: "  ✓ " attr(data-v); color: #8fe3ff; font-size: 11px; }
 .vl-interim { min-height: 18px; margin: 4px 2px 2px; font-size: 13px; font-style: italic; color: #a8c4ff; }
 
 .vl-form { display: flex; gap: 6px; margin-top: 6px; }
@@ -215,6 +216,71 @@ button:focus-visible, input:focus-visible {
 .vl-debug button[aria-pressed="true"] { background: rgba(96,165,250,.8); }
 .vl-debug span { font-size: 11px; color: #9fb6e8; align-self: center; }
 
+
+/* ───────────────────────── MODES: on (orb) · min (edge tab) · off / pending / killed (nothing visible) ───────────────────────── */
+.vl-root[data-mode="pending"] .vl-orb, .vl-root[data-mode="off"] .vl-orb, .vl-root[data-mode="min"] .vl-orb,
+.vl-root[data-mode="pending"] .vl-panel, .vl-root[data-mode="off"] .vl-panel, .vl-root[data-mode="min"] .vl-panel,
+.vl-root[data-mode="pending"] .vl-tab, .vl-root[data-mode="off"] .vl-tab, .vl-root[data-mode="on"] .vl-tab,
+.vl-root[data-mode="pending"] .vl-bubble, .vl-root[data-mode="off"] .vl-bubble, .vl-root[data-mode="min"] .vl-bubble {
+  display: none !important;
+}
+
+/* edge tab: a small half-pill hugging the screen edge, shown while minimized */
+.vl-tab {
+  position: fixed; z-index: 2147483646; top: 0; width: 34px; height: 54px; padding: 0; border: 1px solid rgba(140,180,255,.35);
+  display: grid; place-items: center; color: #fff;
+  background: linear-gradient(180deg, #3a62c8, #1e3a8a);
+  box-shadow: 0 6px 18px rgba(30,58,138,.5), inset 0 1px 1px rgba(255,255,255,.3);
+  opacity: .78; transition: opacity var(--vl-ease), width var(--vl-ease);
+}
+.vl-tab:hover, .vl-tab:focus-visible { opacity: 1; width: 40px; }
+.vl-tab svg { width: 18px; height: 18px; pointer-events: none; }
+.vl-tab[data-side="right"] { right: 0; left: auto; border-right: 0; border-radius: 16px 0 0 16px; }
+.vl-tab[data-side="left"]  { left: 0; right: auto; border-left: 0; border-radius: 0 16px 16px 0; }
+
+/* proactive hint bubble: silent, small, dismissible */
+.vl-bubble {
+  position: fixed; z-index: 2147483646; left: 0; top: 0; max-width: 280px; display: flex; align-items: flex-start; gap: 2px;
+  padding: 4px 4px 4px 4px; border-radius: 16px;
+  background: rgba(10,18,42,.82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border: 1px solid rgba(140,180,255,.30); box-shadow: 0 14px 40px rgba(0,10,40,.45);
+  opacity: 0; visibility: hidden; transform: translateY(6px); pointer-events: none;
+  transition: opacity var(--vl-ease), transform var(--vl-ease), visibility 0s linear 300ms;
+}
+.vl-bubble.show { opacity: 1; visibility: visible; transform: none; pointer-events: auto; transition: opacity var(--vl-ease), transform var(--vl-ease), visibility 0s; }
+.vl-bubble::after {
+  content: ""; position: absolute; bottom: -6px; width: 12px; height: 12px; transform: rotate(45deg);
+  background: rgba(10,18,42,.9); border-right: 1px solid rgba(140,180,255,.30); border-bottom: 1px solid rgba(140,180,255,.30);
+}
+.vl-bubble[data-tail="right"]::after { right: 24px; }
+.vl-bubble[data-tail="left"]::after { left: 24px; }
+.vl-bubble[data-below="true"]::after { bottom: auto; top: -6px; transform: rotate(225deg); }
+.vl-bubble-main { flex: 1; text-align: left; padding: 8px 6px 8px 10px; border: 0; background: transparent; font-size: 13.5px; line-height: 1.4; color: #eaf1ff; border-radius: 12px; }
+.vl-bubble-main:hover { background: rgba(120,160,255,.14); }
+.vl-bubble-x { width: 28px; height: 28px; flex: none; padding: 0; border: 0; border-radius: 9px; background: transparent; color: #a9bde6; display: grid; place-items: center; }
+.vl-bubble-x:hover { background: rgba(120,160,255,.22); color: #fff; }
+.vl-bubble-x svg { width: 14px; height: 14px; }
+
+/* footer row: language switch + turn off */
+.vl-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; min-height: 28px; }
+.vl-lang { display: inline-flex; border: 1px solid rgba(140,180,255,.30); border-radius: 9px; overflow: hidden; }
+.vl-langbtn { padding: 3px 10px; border: 0; background: transparent; font-size: 12px; font-weight: 650; color: #b9cbf1; letter-spacing: .4px; }
+.vl-langbtn + .vl-langbtn { border-left: 1px solid rgba(140,180,255,.30); }
+.vl-langbtn[aria-pressed="true"] { background: rgba(96,165,250,.55); color: #fff; }
+.vl-langbtn:not([aria-pressed="true"]):hover { background: rgba(120,160,255,.18); }
+.vl-off { margin-left: auto; padding: 3px 8px; border: 0; background: transparent; font-size: 12px; color: #93a9d6; text-decoration: underline; text-underline-offset: 2px; border-radius: 8px; }
+.vl-off:hover { color: #fff; background: rgba(120,160,255,.16); }
+
+/* one-line toast (e.g. "voice help is off — press Alt+Shift+V to bring it back") */
+.vl-toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 12px); max-width: min(92vw, 420px);
+  padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.4; text-align: center;
+  background: rgba(10,18,42,.9); border: 1px solid rgba(140,180,255,.30); color: #eaf1ff; box-shadow: 0 12px 34px rgba(0,10,40,.45);
+  opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--vl-ease), transform var(--vl-ease), visibility 0s linear 300ms; z-index: 2147483647;
+}
+.vl-toast.show { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition: opacity var(--vl-ease), transform var(--vl-ease), visibility 0s; }
+.vl-root[data-mode="killed"] .vl-toast { display: none; }
+
 /* ───────────────────────── HIGHLIGHT RINGS (drawn over the page; the page DOM is never modified) ───────────────────────── */
 .vl-layer { position: fixed; inset: 0; z-index: 2147483645; pointer-events: none; }
 .vl-ring {
@@ -246,15 +312,23 @@ button:focus-visible, input:focus-visible {
   }
   .vl-panel::after { border-radius: 24px 24px 0 0; }
   .vl-root[data-open="true"] .vl-orb { display: none; }   /* sheet has its own close button */
+  .vl-bubble { max-width: calc(100vw - 24px); }
+  .vl-langbtn, .vl-off { min-height: 36px; }
+  .vl-tab { height: 60px; }
   .vl-iconbtn { width: 44px; height: 44px; }
   .vl-input { min-height: 44px; font-size: 16px; }       /* 16px stops iOS zoom-on-focus */
   .vl-send { min-width: 64px; }
-  .vl-captions { max-height: 26vh; }
+  .vl-captions { max-height: 20vh; min-height: 40px; }
+  .vl-wave { height: 52px; margin: 8px 0 6px; }
+  .vl-mic, .vl-stop { min-height: 44px; }
+  .vl-note { font-size: 10.5px; margin-top: 8px; }
+  .vl-foot { margin-top: 4px; }
 }
 
 /* ───────────────────────── REDUCED MOTION ───────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .vl-orb, .vl-orb::before, .vl-orb::after, .vl-panel::after, .vl-ring, .vl-state::before { animation: none !important; }
+  .vl-bubble, .vl-toast, .vl-tab { transition: none !important; }
   .vl-root[data-state="listening"] .vl-panel::after { opacity: .9; }
   .vl-root[data-state="listening"] .vl-orb { box-shadow: 0 0 0 4px rgba(96,165,250,.45), 0 0 34px rgba(96,165,250,.8); }
   .vl-root[data-state="thinking"] .vl-orb  { box-shadow: 0 0 22px rgba(100,140,230,.5); }
