@@ -1,4 +1,4 @@
-# VoiceLayer (Phase 0 spike, v0.2.0)
+# VoiceLayer (Phase 0 spike, v0.3.0)
 
 A voice assistant you add to any website with **one `<script>` tag**. It scans the page, talks and listens
 (English + Spanish), and performs actions (go / click / find / read) while the visitor stays in control.
@@ -46,6 +46,75 @@ Both languages, both engines and the visitor controls are in that file. A minifi
 
 Ambiguity ("add to cart" with 4 matches) produces a numbered list with rings and badges; answer with a number, ordinal or name.
 Anything that looks like a purchase / delete / submit asks for a spoken or typed **yes** first. Password and payment forms are never touched.
+
+## 2b. Glass mode: the visual is the product (v0.3)
+
+One pane of frosted glass over the whole page, like glass over a monitor: the site stays visible behind it,
+a glowing circle sits in the middle, and radial waves around it move with **your voice** (mic level) and with
+**the assistant's voice** (its audio level). The site underneath is only a backdrop; the same layer works over any page.
+
+```html
+<script>
+  window.VoiceLayerConfig = {
+    mode: 'glass',
+    glass: { blur: 14, tint: 0.22, hue: 215, lite: 'auto', passThrough: true },
+    companion: { preset: 'training', name: 'Alex', demo: true }   // demo:true = fake data, announced as DEMO
+  };
+</script>
+<script src="/voicelayer/voicelayer.js" defer></script>
+```
+
+Visitor experience: the glass is up, the circle breathes, **"Tap to start"**. One tap = the assistant speaks first
+(greeting, then its question or what it noticed), then the mic opens. Browsers do not allow audio or the mic before
+a tap, so that single tap is the only gate and it is deliberate: asleep means no mic and no voice.
+
+- **Page stays usable**: clicks, scroll and keys reach the page behind the glass (`passThrough`). Only the circle and controls capture input.
+- **Voice controls everything**: "next", "skip", "why", "repeat", "yes/no", "mute/unmute", "pause" (back to tap-to-start), "minimize", "turn off", "English/Español", plus every page command from section 2.
+- **Always visible controls**: pause, mute, minimize, turn off, typed input. Esc closes.
+- **Cost control**: `lite: 'auto'` measures frame time and drops to fewer bars and no backdrop blur on weak devices.
+- **Accessibility**: `prefers-reduced-motion` calms the waves; every state is also in captions; the circle has an accessible name.
+- Demo: `/voicelayer/demo-glass` with `?preset=wellness|training|coaching|support|none&lang=es&blur=14&tint=0.22&hue=215&lite=false&debug=true`.
+
+## 2c. Companion: what the assistant says first (any intent)
+
+Rule-based, no LLM. Presets: `wellness`, `training`, `coaching`, `support`, `none` (plain voice commander).
+Flow: wake tap, greeting, mood question, "I have N things to share", one card per insight (next / skip / why / repeat),
+an optional approved offer (yes / no), wrap-up. Say "summary" any time to start again.
+
+```js
+companion: {
+  preset: 'training', name: 'Alex',
+  signals: async () => (await fetch('/api/me/signals')).json(),   // object | function | Promise | signalsUrl | VoiceLayer.setSignals(obj)
+  rules:   [{ id: 'rest', pri: 80, kind: 'nudge', when: { metric: 'recovery', op: '<', value: 40 },
+              text: { en: 'Your {label} is {value}{unit}. A lighter session may suit today.', es: '...' },
+              because: { en: 'Recovery was below 40.', es: '...' } }],
+  catalog: [{ id: 'mat', name: { en: 'a yoga mat', es: 'una esterilla' }, for: ['recovery'], approved: true, rx: false }],
+  disclosure: { en: 'This is a product suggestion, not advice.', es: '...' },
+  maxInsights: 3, maxAgeHours: 48
+}
+```
+
+Signals shape: `{ name, metrics: { key: { value, prev, target, unit, label, at, ref:{low,high}, lab, ttlHours, source } }, tasks: [{ id, kind, label, due, done }] }`.
+`when` forms: `{metric, op, value}` · `{metric, change:{op,value}}` · `{metric, belowTarget:true}` · `{metric:'*', lab:true, outOfRange:true}` · `{task:{kind}, pending:true}` · a function.
+Text tokens: `{label} {value} {unit} {prev} {change} {target} {low} {high} {date} {source} {name} {pct} {dueAt}`.
+Add your own intent by writing rules; nothing in the engine is wellness-specific.
+
+**Guardrails that cannot be configured away**
+- Observations only: rule text with diagnose/instruct wording is dropped at load (`CP_LINT`).
+- Only catalog items with `approved: true` are offered, always with a non-empty disclosure and a "why am I seeing this".
+- `rx: true` items are never offered or sold; the visitor is routed to their provider.
+- Crisis phrases (EN/ES) get a safety message only, nothing else runs.
+- "No suggestions" turns offers off for that visitor (remembered).
+- Stale data is never presented (default 48 h; labs use their own `ttlHours`).
+- Demo data is badged "DEMO DATA" and announced out loud.
+- Events carry rule and item ids only, never raw health or personal values.
+
+Events: `voicelayer:companion` (`greeted | mood | insight | offer_shown | offer_accepted | rx_routed | opt_out | safety | welcome_back`), `voicelayer:offer`, `voicelayer:glass` (`open | closed | awake | asleep`).
+API additions: `wake() pause() awake setSignals(obj) companion{enabled,preset,stage,insights,rules}`.
+
+**Legal note (not legal advice):** health, supplement, peptide and coaching claims, consent for health data, and voice/biometric
+rules differ by country and state. The assistant is built to inform, never to diagnose or treat, but you need your own counsel and
+privacy policy (including the speech engine you enable) before real data or real offers go live.
 
 ## 3. Visitor control (always)
 
@@ -122,9 +191,12 @@ Otherwise the assistant says it could not confirm, never "done".
 - Grammar is rule-based: it understands the command shapes above, not free conversation. Fuzzy matching tolerates small mis-hearings.
 - Page names and button labels are matched in the page's own language; saying a Spanish command on an English page works only when the words are similar.
 - Browser TTS can't be measured by the page, so the speaking waveform is simulated with browser voices.
+- Glass: `backdrop-filter` is GPU work. `lite:'auto'` reacts to slow frames, but it is only measured on this sandbox, not on low-end phones.
+- Speak-first needs one tap (browser rule). It cannot be removed.
+- Companion insights are only as good as the signals you feed it; demo data is fake by design.
 - Not yet measured on real hardware: Chrome's real `SpeechRecognition` accuracy, real mic levels, Safari/iOS behaviour, a real Deepgram session (tests use a mock; see SELF-TEST.md).
 
 ## 9. Files
 
-`voicelayer.js` · `voicelayer.css` · `demo.html` (EN store) · `demo-es.html` (ES store) · `embed-snippet.html` · `SELF-TEST.md`
-Demo URLs when the project runs: `/voicelayer/demo`, `/voicelayer/demo-es`.
+`voicelayer.js` · `voicelayer.css` · `demo.html` (EN store) · `demo-es.html` (ES store) · `demo-glass.html` (glass + companion) · `embed-snippet.html` · `SELF-TEST.md`
+Demo URLs when the project runs: `/voicelayer/demo`, `/voicelayer/demo-es`, `/voicelayer/demo-glass`.

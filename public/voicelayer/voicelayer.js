@@ -48,6 +48,22 @@
     listenOnOpen: true,                  // tapping the orb opens the panel AND starts the mic (that tap is the consent gesture). false = open only
     resumeAfterNavigation: true,         // after the assistant navigates, re-open the panel (mic stays OFF)
 
+    // ---- GLASS MODE: full-page frosted pane + a glowing circle with radial waves; the assistant speaks first ---------
+    mode: 'assistant',                   // 'assistant' (orb + panel, answers when asked) | 'glass' (full-page glass, speaks first after ONE tap)
+    glass: {
+      autoOpen: true,                    // show the glass (in its "tap to start" state) on load. It never listens or speaks before that tap.
+      blur: 14,                          // px of backdrop blur (0 = clear glass)
+      tint: 0.22,                        // 0..0.6 darkness of the glass
+      hue: 215,                          // accent hue 0..360 (blue family by default)
+      lite: 'auto',                      // 'auto' | true | false  - cheaper rendering on weak devices
+      passThrough: true                  // clicks/scroll reach the page behind the glass (only the controls capture them)
+    },
+    // The Companion: what the assistant says first and what it notices. null = plain voice commander.
+    // { preset: 'wellness'|'training'|'coaching'|'support'|'none', name: 'Boss', demo: true,
+    //   signals: {…}|function|Promise, signalsUrl: '', rules: [], catalog: [], greeting: {en,es}, disclosure: {en,es},
+    //   maxInsights: 3, maxAgeHours: 48, strings: {en:{…},es:{…}} }
+    companion: null,
+
     // ---- voice engine ------------------------------------------------------------------------------------------
     provider: 'auto',                    // 'auto' = Deepgram when apiBase answers and has a key, else browser | 'browser' | 'deepgram'
     apiBase: '',                         // your server's voice routes, e.g. '/api/voice' ('' = browser voice only)
@@ -111,6 +127,8 @@
       if (d.api) CONFIG.apiBase = d.api;
       if (d.provider) CONFIG.provider = d.provider;
       if (d.bubble) CONFIG.bubble = d.bubble !== 'false';
+      if (d.mode) CONFIG.mode = d.mode;
+      if (d.preset || d.name || d.demo) CONFIG.companion = Object.assign({}, CONFIG.companion || {}, d.preset ? { preset: d.preset } : {}, d.name ? { name: d.name } : {}, d.demo ? { demo: d.demo !== 'false' } : {});
     }
   })();
   if (!CONFIG.enabled) return;
@@ -118,7 +136,7 @@
   // opened from disk (file://) a relative API path can't work: use browser voice, make no network calls
   if (location.protocol === 'file:' && !/^https?:/i.test(CONFIG.apiBase)) CONFIG.apiBase = '';
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.3.0';
   const STATES = ['idle', 'listening', 'thinking', 'speaking'];
   const log = function () { if (CONFIG.debug) console.log.apply(console, ['[VoiceLayer]'].concat([].slice.call(arguments))); };
 
@@ -135,7 +153,7 @@
     sset: function (k, v) { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch (e) {} }
   };
   const KEYS = { pos: 'voicelayer.orb', speak: 'voicelayer.speak', resume: 'voicelayer.resume', lang: 'voicelayer.lang',
-    off: 'voicelayer.off', min: 'voicelayer.min', bubble: 'voicelayer.bubble' };
+    off: 'voicelayer.off', min: 'voicelayer.min', bubble: 'voicelayer.bubble', gdismiss: 'voicelayer.gdismiss', cdismissed: 'voicelayer.cdismissed', cdone: 'voicelayer.cdone' };
 
 
   /** (rest of utils) */
@@ -500,6 +518,479 @@
   function andList(arr) { return arr.length < 2 ? arr.join('') : arr.slice(0, -1).join(', ') + ' ' + I.and + ' ' + arr[arr.length - 1]; }
 
   /* =========================================================================
+   * 2c. COMPANION — what the glass assistant says FIRST and what it notices.
+   *     Intent-agnostic: a preset (wellness / training / coaching / support / none) is just data + rules.
+   *     Rule-based on purpose (no LLM): every sentence traces back to ONE data point and ONE rule you can audit.
+   *     Hard guardrails (not configurable):
+   *       • statements of data, never diagnoses or "you need to take X"  (text linter drops offending rules)
+   *       • stale data is never presented as current
+   *       • products only from owner-APPROVED catalog entries, always with a disclosure + "why am I seeing this"
+   *       • prescription items are never sold or recommended: they route to the user's provider
+   *       • emergency phrases get an immediate safety message, nothing else
+   *       • nothing health-related is stored by the widget; events carry rule ids, never raw values
+   * ========================================================================= */
+  PACKS.en.cp = {
+    part: { morning: 'Good morning', afternoon: 'Good afternoon', evening: 'Good evening', night: 'Hi' },
+    hello: function (part, name) { return part + (name ? ', ' + name : '') + '.'; },
+    demoNote: 'Quick note: this is demo data, not yours.',
+    moodQ: { wellness: 'How are you feeling today?', training: 'How is your body feeling today? Ready to move?', coaching: 'How are you showing up today?', support: 'How can I help you today?', none: 'How are you doing?' },
+    moodAck: { good: 'Love to hear it.', neutral: 'Thanks for telling me.', low: 'Thanks for being honest. I’ll keep this short and easy.', unknown: 'Thanks.' },
+    moodExtra: { sore: ' I’ll remember the soreness.', sick: ' I hope you feel better soon.' },
+    intro: function (n) { return n ? 'I have ' + n + (n > 1 ? ' things' : ' thing') + ' to share from your data. Here’s the first.' : 'Nothing needs your attention right now.'; },
+    none: 'Nothing needs your attention right now. Ask me anything, or tap the circle to pause.',
+    noFresh: 'I don’t have fresh data to go on today, so I won’t guess.',
+    hint: 'Say “next” to continue, or “why” to hear where that comes from.',
+    ending: 'That’s everything for now. You can keep talking to me, or tap the circle to pause.',
+    back: function (name) { return 'Welcome back' + (name ? ', ' + name : '') + '. Say “update” for your summary.'; },
+    plainGreet: 'Hi! I’m listening. Try “what is this site?”, or say “help”.',
+    disclosure: 'This is a product suggestion, not medical advice.',
+    offer: function (item, disc) { return 'If it helps, there’s ' + item + ' in the approved catalog. ' + disc + ' Want to see it? Say yes or no.'; },
+    offerYes: function (item) { return 'Okay — here’s ' + item + '.'; },
+    offerNo: 'No problem.',
+    rxRoute: function (provider) { return 'Anything like that has to come from your own provider' + (provider ? ', ' + provider : '') + '. I can’t sell or recommend prescription items.'; },
+    optOut: 'Okay, no more product suggestions.',
+    why: function (w, because) { return 'You’re seeing this because ' + (because || 'a rule matched your data') + (w.label ? ' (' + w.label + (w.date ? ', ' + w.date : '') + (w.source ? ', source: ' + w.source : '') + ')' : '') + '. I only state what the data says; I don’t diagnose.'; },
+    whyOffer: 'You’re seeing this because of the reading I just mentioned. The site owner approved this catalog; I never pick products on my own, and you can say “no suggestions” to turn them off.',
+    nothingToSay: 'There’s nothing to explain yet. Say “update” and I’ll go through your data.',
+    crisis: 'I’m an automated assistant and I can’t help with this. If you might be in danger, please call your local emergency number now — 911 in the US, 112 in Europe — or contact a crisis line, and tell someone near you.',
+    today: 'today', yesterday: 'yesterday', daysAgo: function (n) { return n + ' days ago'; },
+    yourData: 'your connected data',
+    prevPart: function (prev, unit) { return ', versus ' + prev + (unit ? ' ' + unit : '') + ' before'; },
+    dueAt: function (due) { return due ? ' at ' + due : ''; },
+    // grammar (matched on norm(text): lowercase, no accents/punctuation)
+    next: /^(next|continue|go on|go ahead|keep going|more|okay next|ok next|next one|carry on|and then)$/,
+    skip: /^(skip|skip it|not now|later|pass|move on|maybe later)$/,
+    whyRe: /^(why|why is that|why am i seeing this|why am i seeing that|where does that come from|where is that from|how do you know|explain|explain that|what do you mean|source)$/,
+    repeat: /^(repeat|say that again|again|repeat that|come again|what was that|pardon)$/,
+    optRe: /\b(no|stop|dont|do not) (more )?(product )?(suggestions|recommendations|offers|ads)\b|\bstop suggesting\b|\bdont suggest\b/,
+    update: /^(update|my update|give me my update|what do you have|what did you find|how am i doing|any news|whats new|what is new|anything new|status|check in|checkin|summary)$/,
+    crisisRe: /\b(suicid\w*|kill myself|end my life|want to die|hurt myself|self ?harm|chest pain|cant breathe|can not breathe|heart attack|overdos\w*|having a stroke|bleeding heavily)\b/,
+    moodNotBad: /\bnot bad\b/,
+    moodLow: /\b(not (so |very |too )?(good|great|well)|bad|terrible|awful|rough|tired|exhausted|sleepy|drained|low|sad|down|stressed|stress|anxious|anxiety|overwhelmed|burnt out|burned out|sore|achy|aching|hurt|sick|unwell|worn out|heavy|meh)\b/,
+    moodGood: /\b(great|good|well|awesome|amazing|happy|energi[sz]ed|strong|ready|pumped|excellent|fantastic|better|rested|motivated|wonderful)\b/,
+    moodNeutral: /\b(ok|okay|alright|so so|fine|average|normal|decent)\b/,
+    tagSore: /\b(sore|achy|aching|stiff|hurt)\b/, tagSick: /\b(sick|unwell|ill|flu|cold)\b/
+  };
+  PACKS.es.cp = {
+    part: { morning: 'Buenos días', afternoon: 'Buenas tardes', evening: 'Buenas noches', night: 'Hola' },
+    hello: function (part, name) { return part + (name ? ', ' + name : '') + '.'; },
+    demoNote: 'Aviso: son datos de demostración, no los tuyos.',
+    moodQ: { wellness: '¿Cómo te sientes hoy?', training: '¿Cómo está tu cuerpo hoy? ¿Listo para moverte?', coaching: '¿Cómo llegas hoy?', support: '¿En qué puedo ayudarte hoy?', none: '¿Cómo estás?' },
+    moodAck: { good: 'Me alegra oírlo.', neutral: 'Gracias por contármelo.', low: 'Gracias por ser sincero. Lo haré breve y sencillo.', unknown: 'Gracias.' },
+    moodExtra: { sore: ' Tendré en cuenta las molestias.', sick: ' Espero que te mejores pronto.' },
+    intro: function (n) { return n ? 'Tengo ' + n + (n > 1 ? ' cosas' : ' cosa') + ' que contarte con tus datos. Esta es la primera.' : 'Nada requiere tu atención ahora mismo.'; },
+    none: 'Nada requiere tu atención ahora mismo. Pregúntame lo que quieras, o toca el círculo para pausar.',
+    noFresh: 'No tengo datos recientes para hoy, así que no voy a adivinar.',
+    hint: 'Di “siguiente” para continuar, o “por qué” para saber de dónde sale.',
+    ending: 'Eso es todo por ahora. Puedes seguir hablando conmigo, o tocar el círculo para pausar.',
+    back: function (name) { return 'Bienvenido de nuevo' + (name ? ', ' + name : '') + '. Di “resumen” para tu actualización.'; },
+    plainGreet: '¡Hola! Te escucho. Prueba “¿qué es este sitio?”, o di “ayuda”.',
+    disclosure: 'Es una sugerencia de producto, no un consejo médico.',
+    offer: function (item, disc) { return 'Si te sirve, en el catálogo aprobado hay ' + item + '. ' + disc + ' ¿Quieres verlo? Di sí o no.'; },
+    offerYes: function (item) { return 'Vale, aquí tienes ' + item + '.'; },
+    offerNo: 'Sin problema.',
+    rxRoute: function (provider) { return 'Algo así tiene que venir de tu propio profesional' + (provider ? ', ' + provider : '') + '. No puedo vender ni recomendar productos con receta.'; },
+    optOut: 'Vale, no más sugerencias de productos.',
+    why: function (w, because) { return 'Lo ves porque ' + (because || 'una regla coincidió con tus datos') + (w.label ? ' (' + w.label + (w.date ? ', ' + w.date : '') + (w.source ? ', fuente: ' + w.source : '') + ')' : '') + '. Solo digo lo que dicen los datos; no diagnostico.'; },
+    whyOffer: 'Lo ves por la lectura que acabo de mencionar. El dueño del sitio aprobó este catálogo; yo nunca elijo productos por mi cuenta, y puedes decir “sin sugerencias” para desactivarlas.',
+    nothingToSay: 'Todavía no hay nada que explicar. Di “resumen” y repaso tus datos.',
+    crisis: 'Soy un asistente automático y no puedo ayudarte con esto. Si puedes estar en peligro, llama ahora a tu número local de emergencias — 112 en Europa, 911 en EE. UU. y otros países — o a una línea de crisis, y díselo a alguien cercano.',
+    today: 'hoy', yesterday: 'ayer', daysAgo: function (n) { return 'hace ' + n + ' días'; },
+    yourData: 'tus datos conectados',
+    prevPart: function (prev, unit) { return ', frente a ' + prev + (unit ? ' ' + unit : '') + ' antes'; },
+    dueAt: function (due) { return due ? ' a las ' + due : ''; },
+    next: /^(siguiente|continua|continuar|sigue|adelante|mas|el siguiente|otro|vale siguiente|ok siguiente)$/,
+    skip: /^(salta|saltar|omitir|omite|ahora no|luego|despues|mas tarde|paso|pasa|sigamos)$/,
+    whyRe: /^(por que|por que me lo dices|por que veo esto|por que veo eso|de donde sale|de donde sale eso|como lo sabes|explicame|explica|explicalo|fuente|que quieres decir)$/,
+    repeat: /^(repite|repetir|repitelo|otra vez|dilo otra vez|que dijiste|perdon|repite eso)$/,
+    optRe: /\b(sin|no mas|no quiero|deja de|no me) (sugerencias|sugerir|sugieras|recomendaciones|recomendar|ofertas|anuncios)\b|\bno sugieras\b/,
+    update: /^(resumen|mi resumen|dame mi resumen|que tienes|que encontraste|como voy|alguna novedad|novedades|que hay de nuevo|estado|chequeo|revision|actualizacion|actualizame)$/,
+    crisisRe: /\b(suicid\w*|quitarme la vida|matarme|quiero morir\w*|me quiero morir|hacerme dano|autolesion\w*|dolor (en el|de) pecho|no puedo respirar|infarto|sobredosis|derrame cerebral|desmayo|desmayando)\b/,
+    moodNotBad: /\bno (esta |estoy )?mal\b/,
+    moodLow: /\b(mal|fatal|horrible|cansad[oa]|agotad[oa]|sueno|bajo|baja|triste|estresad[oa]|estres|ansios[oa]|ansiedad|agobiad[oa]|dolorid[oa]|adolorid[oa]|dolor|enferm[oa]|pesad[oa]|no muy bien|no tan bien)\b/,
+    moodGood: /\b(genial|bien|muy bien|excelente|fantastic[oa]|content[oa]|feliz|fuerte|list[oa]|motivad[oa]|descansad[oa]|mejor|estupendo|de maravilla|increible|con energia)\b/,
+    moodNeutral: /\b(normal|regular|asi asi|tirando|ok|okay|aceptable|mas o menos|ni bien ni mal)\b/,
+    tagSore: /\b(dolorid[oa]|adolorid[oa]|agujetas|rigid[oa]|dolor muscular)\b/, tagSick: /\b(enferm[oa]|gripe|resfriad[oa]|malestar)\b/
+  };
+  // glass-mode UI strings (merged into each language pack's ui; owners can override via CONFIG.text)
+  Object.assign(PACKS.en.ui, {
+    gTap: 'Tap to start', gTapSub: 'Tap the circle. I’ll speak first, then listen. The mic turns on when you tap.',
+    gMicOn: 'Mic on', gMicOff: 'Mic off', gClose: 'Close', gDemo: 'DEMO DATA', gWhy: 'Why am I seeing this?', gShow: 'Show me', gNotNow: 'Not now',
+    gNext: 'Next', gSuggest: 'Suggestion', gGlassLabel: 'Voice assistant', gCircleLabel: 'Assistant circle: tap to start, pause or interrupt',
+    gSource: 'Source', gOpenLabel: 'Open voice assistant', gProvider: 'Ask your provider', gTapMic: 'Tap the circle to talk', gKindData: 'From your data', gKindReminder: 'Reminder', gKindPraise: 'Nice work', gBecause: 'Because', gTypeHere: 'Or type here…', gPause: 'Pause assistant', gOffTxt: 'Turn off voice assistant'
+  });
+  Object.assign(PACKS.es.ui, {
+    gTap: 'Toca para empezar', gTapSub: 'Toca el círculo. Hablo yo primero y luego escucho. El micrófono se enciende cuando tocas.',
+    gMicOn: 'Micrófono activo', gMicOff: 'Micrófono apagado', gClose: 'Cerrar', gDemo: 'DATOS DE DEMO', gWhy: '¿Por qué veo esto?', gShow: 'Muéstramelo', gNotNow: 'Ahora no',
+    gNext: 'Siguiente', gSuggest: 'Sugerencia', gGlassLabel: 'Asistente de voz', gCircleLabel: 'Círculo del asistente: toca para empezar, pausar o interrumpir',
+    gSource: 'Fuente', gOpenLabel: 'Abrir asistente de voz', gProvider: 'Consulta con tu profesional', gTapMic: 'Toca el círculo para hablar', gKindData: 'De tus datos', gKindReminder: 'Recordatorio', gKindPraise: 'Buen trabajo', gBecause: 'Porque', gTypeHere: 'O escribe aquí…', gPause: 'Pausar asistente', gOffTxt: 'Apagar asistente de voz'
+  });
+
+  Object.assign(PACKS.en.cp, {
+    cmdMute: /^(mute|mute (yourself|the voice|the sound|voice))$/, cmdUnmute: /^(unmute|unmute (yourself|the voice|the sound|voice)|speak again|talk again|voice on)$/,
+    cmdOff: /^(turn (it |this |the assistant |the voice assistant |voice help )?off|switch (it )?off|disable (the )?(voice )?assistant|shut down|turn off voice help)$/,
+    cmdMin: /^(minimi[sz]e|minimi[sz]e (it|this|the assistant)|make it small)$/,
+    cmdSleep: /^(pause|pause (the )?assistant|go to sleep|sleep|take a break|that s all|thats all|i m done|im done)$/,
+    cmdLang: /^(?:speak |switch to |change (?:the language )?to |in )?(spanish|english)$/, langMap: { spanish: 'es', english: 'en' },
+    act: { next: 'next', why: 'why', yes: 'yes', no: 'no' },
+    ackMute: 'Voice muted. I’ll keep showing captions.', ackUnmute: 'Voice is back on.', ackSleep: 'Pausing. Tap the circle whenever you want me.'
+  });
+  Object.assign(PACKS.es.cp, {
+    cmdMute: /^(silencia|silenciar|silencia (la voz|el sonido)|enmudece|sin voz)$/, cmdUnmute: /^(activa (la )?voz|quita (el )?silencio|habla otra vez|desilencia|voz activada)$/,
+    cmdOff: /^(apagate|apaga|apagar|apaga (el )?asistente|apaga (la )?ayuda de voz|desactiva (el )?asistente|apaga todo)$/,
+    cmdMin: /^(minimiza|minimizar|hazte pequeno|minimiza (el )?asistente)$/,
+    cmdSleep: /^(pausa|pausar|pausa (el )?asistente|a dormir|descansa|descansar|eso es todo|ya esta|ya termine)$/,
+    cmdLang: /^(?:habla |hablame |cambia a |en )?(ingles|espanol)$/, langMap: { ingles: 'en', espanol: 'es' },
+    act: { next: 'siguiente', why: 'por qué', yes: 'sí', no: 'no' },
+    ackMute: 'Voz silenciada. Seguiré mostrando subtítulos.', ackUnmute: 'La voz está de nuevo activa.', ackSleep: 'Pausando. Toca el círculo cuando me quieras.'
+  });
+
+  const CP_LINT = /\b(you (need|must|should|have) (to )?(take|buy|start|stop|use)|you are (deficient|sick|ill)|you have (an? )?(disease|disorder|condition|deficiency|illness)|diagnos\w*|prescrib\w*|tienes que (tomar|comprar|usar)|debes (tomar|comprar|dejar|usar)|estas (enferm[oa]|deficiente)|tienes (una |un )?(enfermedad|deficiencia|trastorno)|diagnostic\w*|recet\w*)\b/i;
+  const CP_RULES = {
+    wellness: [
+      { id: 'sleep_low', pri: 70, when: { metric: 'sleep_hours', op: '<', value: 6 },
+        text: { en: 'Your sleep last night was {value} {unit}, under six hours{prevPart}. Source: {source}.', es: 'Anoche dormiste {value} {unit}, menos de seis horas{prevPart}. Fuente: {source}.' },
+        because: { en: 'your sleep reading was under six hours', es: 'tu lectura de sueño fue menor de seis horas' } },
+      { id: 'hrv_drop', pri: 65, when: { metric: 'hrv', change: { op: '<', value: -10 } },
+        text: { en: 'Your {label} is {value} {unit}, down {change} percent from {prev}. Source: {source}.', es: 'Tu {label} es {value} {unit}, un {change} por ciento menos que {prev}. Fuente: {source}.' },
+        because: { en: 'your HRV fell more than ten percent against your previous reading', es: 'tu HRV bajó más de un diez por ciento frente a tu lectura anterior' } },
+      { id: 'rhr_up', pri: 55, when: { metric: 'resting_hr', change: { op: '>', value: 8 } },
+        text: { en: 'Your resting heart rate is {value} {unit}, up {change} percent from {prev}. Source: {source}.', es: 'Tu frecuencia cardíaca en reposo es {value} {unit}, un {change} por ciento más que {prev}. Fuente: {source}.' },
+        because: { en: 'your resting heart rate rose more than eight percent', es: 'tu frecuencia en reposo subió más de un ocho por ciento' } },
+      { id: 'lab_range', pri: 75, when: { metric: '*', lab: true, outOfRange: true },
+        text: { en: 'Your {label} result ({date}) was {value} {unit}, outside the reference range of {low} to {high}. That’s worth discussing with your clinician.', es: 'Tu resultado de {label} ({date}) fue {value} {unit}, fuera del rango de referencia de {low} a {high}. Conviene comentarlo con tu profesional de salud.' },
+        because: { en: 'a lab value on file sits outside its reference range', es: 'un valor de laboratorio registrado está fuera de su rango de referencia' } },
+      { id: 'steps_low', pri: 35, when: { metric: 'steps', belowTarget: 0.5 },
+        text: { en: 'You’re at {value} steps so far today, about {pct} percent of your {target} target.', es: 'Llevas {value} pasos hoy, cerca del {pct} por ciento de tu objetivo de {target}.' },
+        because: { en: 'your steps are under half of your daily target', es: 'tus pasos están por debajo de la mitad de tu objetivo diario' } },
+      { id: 'med_due', pri: 80, kind: 'reminder', when: { task: { kind: ['medication', 'supplement'] }, pending: true },
+        text: { en: 'Reminder from your own list: {label}{dueAt}.', es: 'Recordatorio de tu propia lista: {label}{dueAt}.' },
+        because: { en: 'it is on the list you or your provider set up and isn’t marked done', es: 'está en la lista que tú o tu profesional configuraron y no está marcado como hecho' } },
+      { id: 'streak', pri: 20, kind: 'praise', when: { metric: 'streak_days', op: '>=', value: 3 },
+        text: { en: 'You’re on a {value}-day streak. Nice consistency.', es: 'Llevas {value} días seguidos. Buena constancia.' },
+        because: { en: 'you have a streak of three days or more', es: 'tienes una racha de tres días o más' } }
+    ],
+    training: [
+      { id: 'session_today', pri: 80, kind: 'reminder', when: { task: { kind: 'session' }, pending: true },
+        text: { en: 'On your plan today: {label}{dueAt}.', es: 'En tu plan de hoy: {label}{dueAt}.' },
+        because: { en: 'it is on your training plan and not marked done', es: 'está en tu plan de entrenamiento y no está marcado como hecho' } },
+      { id: 'load_high', pri: 70, when: { metric: 'load_ratio', op: '>', value: 1.5 },
+        text: { en: 'Your training load is {value} times your four-week average. Ratios above 1.5 are linked with higher injury risk, so you may want an easier day.', es: 'Tu carga de entrenamiento es {value} veces tu media de cuatro semanas. Valores por encima de 1,5 se asocian con más riesgo de lesión, así que quizá convenga un día más suave.' },
+        because: { en: 'your load ratio is above 1.5', es: 'tu ratio de carga supera 1,5' } },
+      { id: 'recovery_low', pri: 65, when: { metric: 'recovery', op: '<', value: 34 },
+        text: { en: 'Your recovery score is {value} percent{prevPart}, in the low zone. Source: {source}.', es: 'Tu puntuación de recuperación es {value} por ciento{prevPart}, en la zona baja. Fuente: {source}.' },
+        because: { en: 'your recovery score is under 34 percent', es: 'tu recuperación está por debajo del 34 por ciento' } },
+      { id: 'sessions_behind', pri: 40, when: { metric: 'sessions_week', belowTarget: 1 },
+        text: { en: 'You’ve done {value} of {target} sessions this week.', es: 'Llevas {value} de {target} sesiones esta semana.' },
+        because: { en: 'your sessions this week are under your weekly target', es: 'tus sesiones de esta semana están por debajo de tu objetivo semanal' } },
+      { id: 'streak', pri: 20, kind: 'praise', when: { metric: 'streak_days', op: '>=', value: 3 },
+        text: { en: 'That’s {value} training days in a row. Strong consistency.', es: 'Son {value} días de entrenamiento seguidos. Gran constancia.' },
+        because: { en: 'you have a streak of three days or more', es: 'tienes una racha de tres días o más' } }
+    ],
+    coaching: [
+      { id: 'habit_open', pri: 70, kind: 'reminder', when: { task: { kind: 'habit' }, pending: true },
+        text: { en: 'Still open today: {label}{dueAt}.', es: 'Sigue pendiente hoy: {label}{dueAt}.' },
+        because: { en: 'it is one of your daily habits and isn’t marked done', es: 'es uno de tus hábitos diarios y no está marcado como hecho' } },
+      { id: 'review_due', pri: 60, kind: 'reminder', when: { task: { kind: 'review' }, pending: true },
+        text: { en: 'Coming up: {label}{dueAt}.', es: 'Próximamente: {label}{dueAt}.' },
+        because: { en: 'it is on your calendar and not done yet', es: 'está en tu calendario y aún no está hecho' } },
+      { id: 'goal_pace', pri: 50, when: { metric: 'goal_pct', belowTarget: 1 },
+        text: { en: 'Your goal progress is {value} percent; the pace you set calls for {target} percent by now.', es: 'Tu avance hacia el objetivo es {value} por ciento; el ritmo que fijaste pide {target} por ciento a estas alturas.' },
+        because: { en: 'your progress is behind the pace you set', es: 'tu avance va por detrás del ritmo que fijaste' } },
+      { id: 'streak', pri: 20, kind: 'praise', when: { metric: 'streak_days', op: '>=', value: 3 },
+        text: { en: 'You’ve kept your habit going {value} days in a row.', es: 'Llevas tu hábito {value} días seguidos.' },
+        because: { en: 'you have a streak of three days or more', es: 'tienes una racha de tres días o más' } }
+    ],
+    support: [
+      { id: 'order_update', pri: 70, kind: 'reminder', when: { task: { kind: 'order' }, pending: true },
+        text: { en: 'Update on your order: {label}.', es: 'Novedad de tu pedido: {label}.' },
+        because: { en: 'you have an order that isn’t completed yet', es: 'tienes un pedido que aún no está completado' } },
+      { id: 'tickets_open', pri: 60, when: { metric: 'open_tickets', op: '>', value: 0 },
+        text: { en: 'You have {value} open support {p:request|requests} with us.', es: 'Tienes {value} {p:solicitud abierta|solicitudes abiertas} de soporte con nosotros.' },
+        because: { en: 'there is at least one open support request on your account', es: 'hay al menos una solicitud de soporte abierta en tu cuenta' } }
+    ],
+    none: []
+  };
+
+  /** demo datasets: clearly labelled in the UI ("DEMO DATA") and in the spoken greeting */
+  function cpDemo(preset) {
+    const H = 3600e3, D = 24 * H, now = Date.now();
+    const U = function (en, es) { return { en: en, es: es }; };
+    const L = function (en, es) { return { en: en, es: es }; };
+    const base = { name: 'Boss', metrics: {}, tasks: [], demo: true };
+    if (preset === 'wellness') {
+      base.metrics = {
+        sleep_hours: { value: 5.7, prev: 7.1, unit: U('hours', 'horas'), label: L('sleep', 'sueño'), at: now - 6 * H, source: 'Demo band' },
+        hrv: { value: 41, prev: 49, unit: 'ms', label: 'HRV', at: now - 6 * H, source: 'Demo band' },
+        vitamin_d: { value: 22, unit: 'ng/mL', label: L('vitamin D', 'vitamina D'), at: now - 20 * D, ref: { low: 30, high: 100 }, lab: true, ttlHours: 90 * 24, source: 'Demo lab' },
+        steps: { value: 3200, target: 8000, unit: '', label: L('steps', 'pasos'), at: now - 1 * H, source: 'Demo phone' }
+      };
+      base.tasks = [{ id: 'm1', kind: 'supplement', label: L('your morning supplement', 'tu suplemento de la mañana'), due: '08:00', done: false }];
+    } else if (preset === 'training') {
+      base.metrics = {
+        sessions_week: { value: 2, target: 4, unit: '', label: L('sessions', 'sesiones'), at: now - 2 * H, source: 'Demo log' },
+        load_ratio: { value: 1.6, unit: '', label: L('training load', 'carga'), at: now - 2 * H, source: 'Demo log' },
+        recovery: { value: 31, prev: 62, unit: '%', label: L('recovery', 'recuperación'), at: now - 5 * H, source: 'Demo band' },
+        streak_days: { value: 5, unit: '', label: L('streak', 'racha'), at: now - 2 * H, source: 'Demo log' }
+      };
+      base.tasks = [{ id: 's1', kind: 'session', label: L('upper-body strength', 'fuerza de tren superior'), due: '18:00', done: false }];
+    } else if (preset === 'coaching') {
+      base.metrics = {
+        goal_pct: { value: 40, target: 60, unit: '%', label: L('goal', 'objetivo'), at: now - 4 * H, source: 'Demo tracker' },
+        streak_days: { value: 4, unit: '', label: L('streak', 'racha'), at: now - 4 * H, source: 'Demo tracker' }
+      };
+      base.tasks = [{ id: 'h1', kind: 'habit', label: L('morning journaling', 'diario de la mañana'), due: '', done: false }, { id: 'r1', kind: 'review', label: L('your weekly review', 'tu revisión semanal'), due: '17:00', done: false }];
+    } else if (preset === 'support') {
+      base.metrics = { open_tickets: { value: 1, unit: '', label: L('open requests', 'solicitudes abiertas'), at: now - 1 * H, source: 'Demo desk' } };
+      base.tasks = [{ id: 'o1', kind: 'order', label: L('order 1042 ships tomorrow', 'el pedido 1042 sale mañana'), due: '', done: false }];
+    }
+    return base;
+  }
+  function cpDemoCatalog(preset) {
+    if (preset !== 'wellness') return [];
+    return [
+      { id: 'd3', name: { en: 'Vitamin D3 2000 IU', es: 'Vitamina D3 2000 UI' }, for: ['vitamin_d'], approved: true, rx: false, price: '$14' },
+      { id: 'rec', name: { en: 'a recovery peptide protocol', es: 'un protocolo de péptidos de recuperación' }, for: ['hrv'], approved: true, rx: true, provider: 'your clinician' }
+    ];
+  }
+
+  const loc = function (v) { if (v == null) return ''; if (typeof v === 'object') return v[LANG] != null ? v[LANG] : (v.en != null ? v.en : ''); return String(v); };
+  const cpNum = function (v) { if (v == null || v === '' || !isFinite(Number(v))) return ''; const n = Math.round(Number(v) * 10) / 10; const s = String(n); return LANG === 'es' ? s.replace('.', ',') : s; };
+  function cpCmp(a, op, b) { return op === '<' ? a < b : op === '<=' ? a <= b : op === '>' ? a > b : op === '>=' ? a >= b : op === '==' ? a === b : false; }
+  function cpAtMs(a) { if (a == null || a === '') return Date.now(); const n = typeof a === 'number' ? a : Date.parse(a); return isFinite(n) ? n : Date.now(); }
+  function cpRel(ms) { const P = I.cp, d = Math.floor((Date.now() - ms) / 864e5); return d <= 0 ? P.today : d === 1 ? P.yesterday : P.daysAgo(d); }
+  function cpDaypart() { const h = new Date().getHours(); return h >= 5 && h < 12 ? 'morning' : h >= 12 && h < 18 ? 'afternoon' : h >= 18 && h < 23 ? 'evening' : 'night'; }
+  function cpNormalize(s) {
+    const out = { name: '', metrics: {}, tasks: [] };
+    if (!s || typeof s !== 'object') return out;
+    out.name = clean((s.profile && s.profile.name) || s.name || '');
+    const mm = s.metrics || {};
+    Object.keys(mm).forEach(function (k) {
+      let m = mm[k]; if (m == null) return;
+      if (typeof m !== 'object') m = { value: m };
+      const v = Number(m.value); if (!isFinite(v)) return;
+      out.metrics[k] = { key: k, value: v, prev: m.prev != null && isFinite(Number(m.prev)) ? Number(m.prev) : null, unit: m.unit || '', label: m.label || k.replace(/_/g, ' '),
+        at: cpAtMs(m.at), ref: m.ref || null, target: m.target != null && isFinite(Number(m.target)) ? Number(m.target) : null, source: m.source || '', ttlHours: m.ttlHours, lab: !!m.lab };
+    });
+    (Array.isArray(s.tasks) ? s.tasks : []).forEach(function (t, i) {
+      if (t && (t.label || t.kind)) out.tasks.push({ id: t.id || ('t' + i), kind: t.kind || 'task', label: t.label || t.kind, due: t.due || '', done: !!t.done });
+    });
+    out.demo = !!s.demo;
+    return out;
+  }
+  function cpWhen(w, ctx) {
+    if (typeof w === 'function') { let r; try { r = w(ctx); } catch (e) { return []; } if (!r) return []; return Array.isArray(r) ? r : [{}]; }
+    if (!w) return [];
+    const out = [];
+    if (w.task) {
+      const kinds = [].concat(w.task.kind || []);
+      ctx.tasks.forEach(function (t) { if ((!kinds.length || kinds.indexOf(t.kind) >= 0) && (!w.pending || !t.done)) out.push({ t: t }); });
+      return out;
+    }
+    const keys = w.metric === '*' ? Object.keys(ctx.metrics) : [w.metric];
+    keys.forEach(function (k) {
+      const m = ctx.metrics[k]; if (!m) return;
+      const ttl = (m.ttlHours || ctx.maxAgeHours) * 3600e3;
+      if (Date.now() - m.at > ttl) return;                                  // stale → never presented as current
+      if (w.lab && !m.lab) return;
+      if (w.op && !cpCmp(m.value, w.op, w.value)) return;
+      let change = '';
+      if (w.change) { if (m.prev == null || !m.prev) return; const pc = (m.value - m.prev) / Math.abs(m.prev) * 100; if (!cpCmp(pc, w.change.op, w.change.value)) return; change = Math.round(Math.abs(pc)); }
+      if (w.outOfRange) { const r = m.ref; if (!r) return; const lo = isFinite(r.low) && m.value < r.low, hi = isFinite(r.high) && m.value > r.high; if (!(lo || hi)) return; }
+      if (w.belowTarget != null) { if (m.target == null || !(m.value < m.target * w.belowTarget)) return; }
+      out.push({ m: m, change: change });
+    });
+    return out;
+  }
+  function cpFill(str, hit, name) {
+    const P = I.cp, m = hit.m || null, t = hit.t || null;
+    const unit = m ? loc(m.unit) : '';
+    const rep = {
+      label: m ? loc(m.label) : (t ? loc(t.label) : ''), value: m ? cpNum(m.value) : '', unit: unit, prev: m ? cpNum(m.prev) : '', change: hit.change !== undefined ? String(hit.change) : '',
+      target: m ? cpNum(m.target) : '', low: m && m.ref ? cpNum(m.ref.low) : '', high: m && m.ref ? cpNum(m.ref.high) : '', date: m ? cpRel(m.at) : '',
+      source: m ? (m.source || P.yourData) : '', name: name || '', pct: m && m.target ? String(Math.round(m.value / m.target * 100)) : '',
+      prevPart: m && m.prev != null ? P.prevPart(cpNum(m.prev), unit) : '', dueAt: t ? P.dueAt(t.due) : ''
+    };
+    return String(str).replace(/\{p:([^|}]*)\|([^}]*)\}/g, function (a, x, y) { return m && Number(m.value) === 1 ? x : y; })
+      .replace(/\{(\w+)\}/g, function (a, k) { return rep[k] != null ? rep[k] : ''; })
+      .replace(/\s+([.,;:])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  const Companion = {
+    cfg: null, data: null, loaded: false, stage: 'off', insights: [], i: -1, cur: null, mood: null, greeted: false, optOut: false, _lastSay: '',
+    enabled: function () { return !!this.cfg; },
+    engaged: function () { return !!this.cfg && VL.woke && this.stage !== 'off'; },
+    init: function () {
+      const c = CONFIG.companion;
+      if (!c || typeof c !== 'object') { this.cfg = null; return; }
+      const preset = CP_RULES[c.preset] ? c.preset : 'none';
+      this.cfg = Object.assign({ preset: preset, name: '', demo: false, maxInsights: 3, maxAgeHours: 48, rules: [], catalog: [], replaceRules: false }, c, { preset: preset });
+      this.optOut = store.get(KEYS.cdismissed) === '1';
+      this.rules = this.buildRules();
+    },
+    buildRules: function () {
+      const cfg = this.cfg, list = (cfg.replaceRules ? [] : CP_RULES[cfg.preset].slice()).concat(Array.isArray(cfg.rules) ? cfg.rules : []);
+      const ok = [];
+      list.forEach(function (r) {
+        if (!r || !r.id || !r.text || !r.when) { console.warn('[VoiceLayer] companion rule ignored (needs id, when, text):', r && r.id); return; }
+        const texts = typeof r.text === 'string' ? [r.text] : Object.keys(r.text).map(function (k) { return r.text[k]; });
+        const bad = texts.concat(typeof r.because === 'string' ? [r.because] : (r.because ? Object.keys(r.because).map(function (k) { return r.because[k]; }) : [])).find(function (t) { return CP_LINT.test(String(t)); });
+        if (bad) { console.warn('[VoiceLayer] companion rule "' + r.id + '" dropped: wording looks like a diagnosis/instruction ("' + String(bad).slice(0, 60) + '…"). State data instead.'); return; }
+        ok.push(r);
+      });
+      return ok;
+    },
+    setSignals: function (s) { this.cfg && (this.cfg.signals = s); this.loaded = false; },
+    load: async function () {
+      if (this.loaded) return;
+      const cfg = this.cfg; let s = cfg.signals;
+      try {
+        if (typeof s === 'function') s = await s();
+        else if (s && typeof s.then === 'function') s = await s;
+        else if (!s && cfg.signalsUrl && location.protocol !== 'file:') { const r = await fetch(cfg.signalsUrl, { credentials: 'same-origin' }); if (r.ok) s = await r.json(); }
+      } catch (e) { log('signals failed', e && e.message); s = null; }
+      if (!s && cfg.demo) s = cpDemo(cfg.preset);
+      this.data = cpNormalize(s);
+      this.loaded = true;
+    },
+    catalogFor: function (rule, keys) {
+      const cat = (this.cfg.catalog && this.cfg.catalog.length ? this.cfg.catalog : (this.cfg.demo ? cpDemoCatalog(this.cfg.preset) : []));
+      const want = keys.concat(rule.offerFor || []);
+      return cat.find(function (c) { return c && c.approved === true && (c.for || []).some(function (f) { return want.indexOf(f) >= 0; }); }) || null;
+    },
+    build: function () {
+      const P = I.cp, d = this.data, ctx = { metrics: d.metrics, tasks: d.tasks, now: Date.now(), maxAgeHours: this.cfg.maxAgeHours, mood: this.mood };
+      const name = d.name || this.cfg.name || '', cand = [], seen = {};
+      this.rules.slice().sort(function (a, b) { return (b.pri || 50) - (a.pri || 50); }).forEach(function (r) {
+        cpWhen(r.when, ctx).forEach(function (hit) {
+          const key = r.id + ':' + ((hit.m && hit.m.key) || (hit.t && hit.t.id) || '');
+          const slot = (hit.m && hit.m.key) || (hit.t && ('task:' + hit.t.id)) || key;
+          if (seen[slot]) return; seen[slot] = true;
+          const tpl = typeof r.text === 'string' ? r.text : (r.text[LANG] || r.text.en || '');
+          if (!tpl) return;
+          const bt = r.because ? (typeof r.because === 'string' ? r.because : (r.because[LANG] || r.because.en || '')) : '';
+          const m = hit.m || null;
+          const item = Companion.catalogFor(r, m ? [m.key] : []);
+          cand.push({ id: key, rule: r.id, kind: r.kind || 'data', pri: r.pri || 50, text: cpFill(tpl, hit, name), because: bt,
+            why: { key: m ? m.key : '', label: m ? loc(m.label) : (hit.t ? loc(hit.t.label) : ''), value: m ? cpNum(m.value) : '', unit: m ? loc(m.unit) : '', prev: m ? cpNum(m.prev) : '',
+              change: hit.change !== undefined ? hit.change : '', date: m ? cpRel(m.at) : '', source: m ? (m.source || P.yourData) : '' },
+            offer: item && !item.rx ? item : null, rx: item && item.rx ? item : null });
+        });
+      });
+      return cand.slice(0, Math.max(1, this.cfg.maxInsights | 0));
+    },
+    /** the visitor switched language: rebuild what is on screen in the new language (nothing is spoken here) */
+    onLang: function () {
+      if (!this.cfg || !this.data) return;
+      UI.hideCard(); VL.pending = null;
+      if (this.stage === 'insights' || this.stage === 'done') {
+        this.insights = this.build();
+        this.cur = this.insights[this.i] || null;
+        if (this.cur && this.stage === 'insights') UI.showCard(this.cur, this.i, this.insights.length);
+      }
+    },
+    emit: function (type, extra) { try { window.dispatchEvent(new CustomEvent('voicelayer:companion', { detail: Object.assign({ type: type, preset: this.cfg && this.cfg.preset }, extra || {}) })); } catch (e) {} },
+
+    /** speak-first: runs on the wake tap */
+    begin: async function (alive) {
+      const P = I.cp, cfg = this.cfg;
+      await this.load();
+      if (!alive()) return;
+      const name = this.data.name || cfg.name || '';
+      UI.setDemo(!!(cfg.demo || this.data.demo));
+      if (this.greeted || store.sget(KEYS.cdone)) { this.greeted = true; this.stage = 'insights'; this.emit('welcome_back'); return VL.say(P.back(name)); }
+      this.greeted = true; store.sset(KEYS.cdone, '1');
+      const g = cfg.greeting && (typeof cfg.greeting === 'object' ? cfg.greeting[LANG] : cfg.greeting);
+      const hello = g ? g.replace(/\{name\}/g, name) : P.hello(P.part[cpDaypart()], name);
+      const text = hello + (cfg.demo || this.data.demo ? ' ' + P.demoNote : '') + ' ' + (P.moodQ[cfg.preset] || P.moodQ.none);
+      this.stage = 'mood'; this.emit('greeted');
+      await VL.say(text);
+    },
+    classifyMood: function (t) {
+      const P = I.cp; let mood = 'unknown';
+      if (P.moodNotBad.test(t)) mood = 'neutral';
+      else if (P.moodLow.test(t)) mood = 'low';
+      else if (P.moodGood.test(t)) mood = 'good';
+      else if (P.moodNeutral.test(t)) mood = 'neutral';
+      return { mood: mood, sore: P.tagSore.test(t), sick: P.tagSick.test(t) };
+    },
+    startInsights: async function (ack, alive) {
+      const P = I.cp;
+      this.insights = this.build(); this.i = -1;
+      const anyMetric = Object.keys(this.data.metrics).length > 0;
+      if (!this.insights.length) {
+        this.stage = 'done'; UI.hideCard();
+        return VL.say(ack + ' ' + (anyMetric && !this.fresh() ? P.noFresh : P.none));
+      }
+      await VL.say(ack + ' ' + P.intro(this.insights.length));
+      if (!alive()) return;
+      return this.present(0, alive);
+    },
+    fresh: function () { const ttl = this.cfg.maxAgeHours * 3600e3, d = this.data; return Object.keys(d.metrics).some(function (k) { const m = d.metrics[k]; return Date.now() - m.at <= (m.ttlHours ? m.ttlHours * 3600e3 : ttl); }) || d.tasks.length > 0; },
+    present: async function (i, alive) {
+      const P = I.cp, ins = this.insights[i]; if (!ins) return this.finish(alive);
+      this.i = i; this.cur = ins; this.stage = 'insights'; VL.pending = null;
+      UI.showCard(ins, i, this.insights.length);
+      this.emit('insight', { rule: ins.rule, index: i, of: this.insights.length });
+      await VL.say(ins.text + (i === 0 ? ' ' + P.hint : ''));
+      if (!alive()) return;
+      if (ins.offer && !this.optOut) return this.askOffer(ins, alive);
+      if (ins.rx) { UI.showRx(ins.rx); this.emit('rx_routed', { rule: ins.rule, item: ins.rx.id }); return VL.say(P.rxRoute(loc(ins.rx.provider))); }
+    },
+    disclosure: function () { return loc(this.cfg.disclosure) || I.cp.disclosure; },     // can never be empty
+    askOffer: async function (ins, alive) {
+      const P = I.cp, name = loc(ins.offer.name);
+      UI.showOffer(ins.offer, this.disclosure());
+      VL.pending = { kind: 'offer', until: performance.now() + 45000, ins: ins };
+      this.emit('offer_shown', { rule: ins.rule, item: ins.offer.id });
+      await VL.say(P.offer(name, this.disclosure()));
+    },
+    finish: async function (alive) {
+      this.stage = 'done'; this.cur = null; UI.hideCard(); VL.pending = null;
+      return VL.say(I.cp.ending);
+    },
+    crisis: async function () {
+      this.stage = 'ready'; VL.pending = null; UI.hideCard();
+      this.emit('safety');
+      return VL.say(I.cp.crisis);
+    },
+    /** called from VL.run before the normal command grammar. Returns true when handled. */
+    intercept: async function (text, intent, tok, alive) {
+      const P = I.cp, t = norm(text), pend = VL.pending && VL.pending.kind === 'offer' ? VL.pending : null;
+      if (pend) {
+        if (I.yes.test(t)) {
+          VL.pending = null; const it = pend.ins.offer;
+          this.emit('offer_accepted', { rule: pend.ins.rule, item: it.id });
+          UI.showOffer(it, this.disclosure(), true);
+          try { window.dispatchEvent(new CustomEvent('voicelayer:offer', { detail: { id: it.id, name: loc(it.name), url: it.url || '', rule: pend.ins.rule } })); } catch (e) {}
+          await VL.say(P.offerYes(loc(it.name)));
+          if (it.url && /^(https?:|\/)/i.test(it.url) && alive()) { await sleep(900); if (alive()) location.href = it.url; }
+          return true;
+        }
+        if (I.no.test(t) || P.skip.test(t)) { VL.pending = null; UI.hideOffer(); await VL.say(P.offerNo); return true; }
+        if (!P.whyRe.test(t) && !P.optRe.test(t)) { VL.pending = null; UI.hideOffer(); }       // anything else lapses the offer
+      }
+      if (P.optRe.test(t)) { this.optOut = true; store.set(KEYS.cdismissed, '1'); VL.pending = null; UI.hideOffer(); this.emit('opt_out'); await VL.say(P.optOut); return true; }
+      if (P.update.test(t)) { await this.startInsights('', alive); return true; }
+      if (this.stage === 'mood' && intent.type === 'unknown') {
+        const c = this.classifyMood(t); this.mood = c.mood; this.emit('mood', { mood: c.mood });
+        const ack = P.moodAck[c.mood] + (c.sore ? P.moodExtra.sore : '') + (c.sick ? P.moodExtra.sick : '');
+        await this.startInsights(ack, alive); return true;
+      }
+      if (this.stage === 'insights' || this.stage === 'done') {
+        if (P.whyRe.test(t)) {
+          if (pend) { await VL.say(P.whyOffer); return true; }
+          if (!this.cur) { await VL.say(P.nothingToSay); return true; }
+          UI.showWhy(true); await VL.say(P.why(this.cur.why, this.cur.because)); return true;
+        }
+        if (P.repeat.test(t)) { if (this.cur) { await VL.say(this.cur.text); return true; } }
+        if (this.stage === 'insights' && (P.next.test(t) || P.skip.test(t))) { UI.hideOffer(); await this.present(this.i + 1, alive); return true; }
+      }
+      return false;
+    }
+  };
+
+  /* =========================================================================
    * 3. SITE SCANNER — builds the "site map" the assistant reasons over.
    *    Keeps live element references internally; getSiteMap() returns a plain JSON copy for the "agent".
    * ========================================================================= */
@@ -772,6 +1263,113 @@
       const half = Math.max(1, (this.cur[i] * maxH) / 2);
       ctx.beginPath(); ctx.moveTo(x, mid - half); ctx.lineTo(x, mid + half); ctx.stroke();
     }
+  };
+
+  /* =========================================================================
+   * 4b. RadialRenderer — the glass-mode visual: a glowing circle ringed by radial bars + expanding ripples.
+   *     Reads the SAME audio taps as the panel waveform (UI.wave): mic analyser while listening, real TTS output
+   *     analyser while speaking (Deepgram voice), a voice-shaped simulation otherwise.
+   *       sleep      slow breathing circle + a "tap me" ripple
+   *       idle       soft breathing, flat shimmer
+   *       listening  bars follow YOUR voice, ripples leave the circle when you speak
+   *       thinking   a bright arc sweeps around the ring
+   *       speaking   smooth symmetric bars + ripples that follow the assistant's voice
+   * ========================================================================= */
+  function RadialRenderer(canvas) {
+    this.canvas = canvas; this.ctx = canvas.getContext('2d');
+    this.N = 72; this.cur = new Float32Array(this.N);
+    this.ripples = []; this.lastRip = 0; this.level = 0; this.lastLevel = 0;
+    this.t0 = performance.now(); this.running = false; this.dpr = 1; this.S = 400; this.R = 100;
+    this.lite = false; this.hue = 215; this.sleep = false;
+    this.reduced = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    this._loop = this._loop.bind(this);
+  }
+  RadialRenderer.prototype.configure = function (o) { this.lite = !!o.lite; this.auto = !!o.auto; this.hue = o.hue; this.N = this.lite ? 48 : 72; this.cur = new Float32Array(this.N); };
+  RadialRenderer.prototype.resize = function () {
+    const vw = document.documentElement.clientWidth || window.innerWidth, vh = window.innerHeight || 700;
+    this.R = clamp(Math.round(Math.min(vw * 0.19, vh * (vh < 560 ? 0.10 : 0.13))), 46, 120);
+    this.S = Math.round(this.R * 5);
+    this.dpr = this.lite ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.style.width = this.S + 'px'; this.canvas.style.height = this.S + 'px';
+    this.canvas.width = Math.round(this.S * this.dpr); this.canvas.height = Math.round(this.S * this.dpr);
+    const host = (this.canvas.closest && this.canvas.closest('.vl-g-stage')) || this.canvas.parentNode; if (host && host.style) host.style.setProperty('--vl-R', this.R + 'px');
+  };
+  RadialRenderer.prototype.start = function () { if (this.running) return; this.running = true; this.resize(); requestAnimationFrame(this._loop); };
+  RadialRenderer.prototype.stop = function () { this.running = false; };
+  RadialRenderer.prototype._targets = function (i, t, state, w) {
+    const N = this.N, th = (i / N) * Math.PI * 2, d = (1 - Math.cos(th)) / 2, k = this.reduced ? 0.4 : 1;   // d: 0 top → 1 bottom, mirrored left/right
+    const sim = function (a) { const env = 0.5 + 0.5 * Math.sin(t * 1.7) * Math.sin(t * 0.63 + 1.3), jit = 0.5 + 0.5 * Math.sin(t * 9 + i * 1.9) * Math.sin(t * 5.3 + i * 0.7); return (0.12 + 0.75 * env * jit) * a; };
+    if (state === 'listening') {
+      if (w && w.analyser && w.freq) { const u = Math.floor(w.freq.length * 0.6), idx = Math.min(u - 1, Math.floor(d * u)); return Math.pow(w.freq[idx] / 255, 1.15) * (1.05 - 0.3 * d); }
+      return sim(1 - 0.4 * d) * k;
+    }
+    if (state === 'speaking') {
+      if (w && w.outAnalyser && w.outFreq) { const u = Math.floor(w.outFreq.length * 0.55), idx = Math.min(u - 1, Math.floor(d * u)); return (0.10 + 0.9 * Math.pow(w.outFreq[idx] / 255, 1.1)) * (1 - 0.3 * d * d) * k; }
+      const kick = 0.55 + 0.45 * (w ? w.pulse : 0), a = 0.5 + 0.5 * Math.sin(t * 3.1 - d * 5.2), b = 0.5 + 0.5 * Math.sin(t * 1.9 - d * 2.6 + 1.1);
+      return (0.14 + 0.70 * (0.6 * a + 0.4 * b) * kick) * (1 - 0.45 * d * d) * k;
+    }
+    if (state === 'thinking') {
+      const ph = (t * 0.7) % 1, dist = Math.min(Math.abs(i / N - ph), 1 - Math.abs(i / N - ph));
+      return (0.07 + 0.55 * Math.exp(-dist * dist * 260)) * k;
+    }
+    return 0.03 + 0.03 * (0.5 + 0.5 * Math.sin(t * 1.3 + i * 0.55)) * k;       // idle / sleep
+  };
+  RadialRenderer.prototype._loop = function (now) {
+    if (!this.running) return;
+    requestAnimationFrame(this._loop);
+    if (document.hidden || !this.canvas.isConnected || !this.canvas.getClientRects().length) { this._lt = 0; return; }      // nothing visible → no work
+    if (this._lt) {                                                    // measured fallback: sustained slow frames → cheaper rendering (only when lite:'auto')
+      const dt = now - this._lt;
+      if (dt < 500) { this._acc = (this._acc || 0) + dt; this._n = (this._n || 0) + 1; if (this._n >= 120) { if (this.auto && !this.lite && this._acc / this._n > 42 && this.onSlow) this.onSlow(); this._acc = 0; this._n = 0; } }
+    }
+    this._lt = now;
+    const w = UI.wave, state = this.sleep ? 'idle' : (w ? w.state : 'idle'), t = (now - this.t0) / 1000, N = this.N, R = this.R, S = this.S, dpr = this.dpr, ctx = this.ctx;
+    if (w) {                                              // the panel renderer isn't running in glass mode, so we feed its buffers
+      if (w.analyser && w.freq && state === 'listening') w.analyser.getByteFrequencyData(w.freq);
+      if (w.outAnalyser && w.outFreq && state === 'speaking') w.outAnalyser.getByteFrequencyData(w.outFreq);
+      w.pulse *= 0.94;
+    }
+    const ease = state === 'speaking' ? 0.14 : state === 'listening' ? 0.38 : 0.2;
+    let sum = 0;
+    for (let i = 0; i < N; i++) { const tg = clamp(this._targets(i, t, state, w), 0, 1); this.cur[i] += (tg - this.cur[i]) * ease; sum += this.cur[i]; }
+    const lvl = sum / N; this.level += (lvl - this.level) * 0.25; this.lastLevel = this.level; if (w) w.lastLevel = this.level;
+    // palette per state (hue-rotated blue family)
+    const H = this.hue; let h = H, s = 88, l = 62, glow = 0.8;
+    if (state === 'speaking') { h = H - 22; l = 70; glow = 0.95; } else if (state === 'listening') { h = H + 2; l = 64; glow = 0.95; } else if (state === 'thinking') { h = H + 8; s = 45; l = 62; glow = 0.55; } else { s = 72; l = 52; glow = 0.45; }
+    const col = function (a, dl) { return 'hsla(' + h + ',' + s + '%,' + clamp(l + (dl || 0), 5, 95) + '%,' + a + ')'; };
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, S, S);
+    const cx = S / 2, cy = S / 2, breathe = 1 + (this.reduced ? 0 : 0.035 * Math.sin(t * 1.3)) + this.level * 0.16, r = R * breathe;
+    // ripples leave the circle with the voice (or gently, as a "tap me" cue while asleep)
+    if (!this.reduced) {
+      const gap = this.sleep ? 2600 : (320 - this.level * 220);
+      if ((this.sleep || ((state === 'listening' || state === 'speaking') && this.level > 0.13)) && now - this.lastRip > gap) { this.ripples.push({ b: now, a: this.sleep ? 0.5 : clamp(this.level * 1.6, 0.25, 0.9) }); this.lastRip = now; if (this.ripples.length > 7) this.ripples.shift(); }
+    }
+    const life = this.sleep ? 3200 : 1900;
+    this.ripples = this.ripples.filter(function (p) { return now - p.b < life; });
+    ctx.lineWidth = 2;
+    for (let q = 0; q < this.ripples.length; q++) {
+      const p = this.ripples[q], u = (now - p.b) / life, e = 1 - Math.pow(1 - u, 2.2);
+      ctx.strokeStyle = col(p.a * (1 - u) * 0.9, 6); ctx.beginPath(); ctx.arc(cx, cy, r * (1.08 + 0.9 * e), 0, 6.2832); ctx.stroke();
+    }
+    // core: soft glass sphere
+    const g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.1, cx, cy, r);
+    g.addColorStop(0, col(0.55, 18)); g.addColorStop(0.55, col(0.22, 0)); g.addColorStop(1, col(0.12, -22));
+    if (!this.lite) { ctx.shadowColor = col(glow, 4); ctx.shadowBlur = 18 + this.level * 46; }
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = col(0.7, 14); ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r - 3, Math.PI * 1.1, Math.PI * 1.65); ctx.stroke();   // glass highlight
+    // radial bars
+    const r0 = r * 1.1, maxL = R * 0.72, bw = Math.max(2, (6.2832 * r0 / N) * 0.52);
+    ctx.lineCap = 'round'; ctx.lineWidth = bw;
+    if (!this.lite) { ctx.shadowColor = col(glow, 0); ctx.shadowBlur = state === 'idle' ? 3 : 10; }
+    const grad = ctx.createLinearGradient(cx, cy - r0 - maxL, cx, cy + r0 + maxL); grad.addColorStop(0, col(0.98, 14)); grad.addColorStop(0.5, col(0.9, 0)); grad.addColorStop(1, col(0.98, 14));
+    ctx.strokeStyle = grad;
+    for (let i = 0; i < N; i++) {
+      const th = (i / N) * 6.2832 - Math.PI / 2, len = 2 + this.cur[i] * maxL, c = Math.cos(th), sn = Math.sin(th);
+      ctx.beginPath(); ctx.moveTo(cx + c * r0, cy + sn * r0); ctx.lineTo(cx + c * (r0 + len), cy + sn * (r0 + len)); ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
   };
 
   /* =========================================================================
@@ -1221,6 +1819,7 @@
     mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
     close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     minus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 17h12"/></svg>',
+    pause: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg>',
     vol: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>',
     mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>'
   };
@@ -1255,8 +1854,50 @@
       const root = this.root = document.createElement('div');
       root.className = 'vl-root'; root.setAttribute('data-state', 'idle'); root.setAttribute('data-open', 'false'); root.setAttribute('data-mode', 'on');
       if (CONFIG.debug) root.setAttribute('data-debug', 'true');
+      const G = CONFIG.mode === 'glass'; this.isGlass = G;
+      root.setAttribute('data-ui', G ? 'glass' : 'assistant');
+      if (G) {
+        root.style.setProperty('--vl-blur', clamp(Number(CONFIG.glass.blur) || 0, 0, 40) + 'px');
+        root.style.setProperty('--vl-tint', String(clamp(Number(CONFIG.glass.tint) || 0, 0, 0.6)));
+        root.setAttribute('data-pass', CONFIG.glass.passThrough === false ? 'false' : 'true');
+      }
+      const GLASS_HTML = !G ? '' :
+        '<section class="vl-glass" id="vl-glass" role="dialog" aria-modal="false" data-awake="false" data-mic="off" data-card="false">' +
+          '<div class="vl-g-pane" aria-hidden="true"></div>' +
+          '<div class="vl-g-ui">' +
+            '<header class="vl-g-top">' +
+              '<span class="vl-g-badge" id="vl-g-demo" hidden></span><span class="vl-spacer"></span>' +
+              '<span class="vl-g-chip vl-g-micchip" id="vl-g-mic" role="status" aria-live="polite"><i></i><span id="vl-g-mictxt"></span></span>' +
+              '<span class="vl-g-chip vl-g-statechip" id="vl-g-state" role="status"></span>' +
+              '<button class="vl-g-ib" type="button" id="vl-g-mute" aria-pressed="false">' + ICON.vol + '</button>' +
+              '<span class="vl-lang" id="vl-g-lang" role="group"></span>' +
+              '<button class="vl-g-ib" type="button" id="vl-g-pause">' + ICON.pause + '</button>' +
+              '<button class="vl-g-ib" type="button" id="vl-g-x">' + ICON.close + '</button>' +
+            '</header>' +
+            '<main class="vl-g-stage">' +
+              '<button class="vl-g-circle" type="button" id="vl-g-circle"><canvas id="vl-g-canvas" aria-hidden="true"></canvas></button>' +
+              '<div class="vl-g-tap" id="vl-g-tap"><strong id="vl-g-tap1"></strong><span id="vl-g-tap2"></span></div>' +
+              '<p class="vl-g-hint" id="vl-g-hint"></p>' +
+            '</main>' +
+            '<footer class="vl-g-bottom">' +
+              '<p class="vl-g-user" id="vl-g-user"></p><p class="vl-g-interim" id="vl-g-interim" aria-hidden="true"></p>' +
+              '<p class="vl-g-line" id="vl-g-line" role="log" aria-live="polite"></p>' +
+              '<article class="vl-g-card" id="vl-g-card" hidden>' +
+                '<header class="vl-g-chead"><span class="vl-g-kind" id="vl-g-kind"></span><span class="vl-g-n" id="vl-g-n"></span></header>' +
+                '<p class="vl-g-ctext" id="vl-g-ctext"></p>' +
+                '<p class="vl-g-because" id="vl-g-because" hidden></p>' +
+                '<p class="vl-g-rx" id="vl-g-rx" hidden></p>' +
+                '<div class="vl-g-offer" id="vl-g-offer" hidden><p class="vl-g-oname" id="vl-g-oname"></p><p class="vl-g-disc" id="vl-g-disc"></p>' +
+                  '<div class="vl-g-row" id="vl-g-orow"><button class="vl-g-btn primary" type="button" id="vl-g-yes"></button><button class="vl-g-btn" type="button" id="vl-g-no"></button></div></div>' +
+                '<div class="vl-g-row" id="vl-g-actions"><button class="vl-g-btn" type="button" id="vl-g-why"></button><button class="vl-g-btn" type="button" id="vl-g-next"></button></div>' +
+              '</article>' +
+              '<form class="vl-g-form" id="vl-g-form" autocomplete="off"><input class="vl-input" id="vl-g-input" type="text" enterkeyhint="send" /><button class="vl-send" type="submit" id="vl-g-send"></button></form>' +
+              '<div class="vl-g-ctrl"><button class="vl-g-stop" type="button" id="vl-g-stop"></button><button class="vl-off" type="button" id="vl-g-off"></button></div>' +
+            '</footer>' +
+          '</div>' +
+        '</section>';
       root.innerHTML =
-        '<div class="vl-layer" id="vl-layer"></div>' +
+        '<div class="vl-layer" id="vl-layer"></div>' + GLASS_HTML +
         '<button class="vl-orb" type="button" id="vl-orb" aria-haspopup="dialog" aria-expanded="false">' + ICON.mic + '</button>' +
         '<button class="vl-tab" type="button" id="vl-tab">' + ICON.mic + '</button>' +
         '<div class="vl-bubble" id="vl-bubble" role="status" aria-live="polite">' +
@@ -1302,14 +1943,28 @@
       this.muteBtn = $('vl-mute'); this.layer = $('vl-layer'); this.micTxt = $('vl-mictxt'); this.bubble = $('vl-bubble'); this.toast = $('vl-toast');
       this.minBtn = $('vl-min'); this.offBtn = $('vl-off'); this.langBox = $('vl-lang'); this.note = $('vl-note');
       this.minBtn.hidden = !CONFIG.allowMinimize; this.offBtn.hidden = !CONFIG.allowTurnOff;
+      this.langBoxes = [this.langBox];
+      if (G) {
+        this.glass = $('vl-g-glass') || $('vl-glass'); this.gcircle = $('vl-g-circle'); this.gcanvas = $('vl-g-canvas'); this.gcard = $('vl-g-card');
+        this.gline = $('vl-g-line'); this.guser = $('vl-g-user'); this.ginterim = $('vl-g-interim'); this.gstate = $('vl-g-state'); this.gmic = $('vl-g-mic');
+        this.gmictxt = $('vl-g-mictxt'); this.ghint = $('vl-g-hint'); this.gmute = $('vl-g-mute'); this.goff = $('vl-g-off'); this.ginput = $('vl-g-input');
+        this.langBoxes.push($('vl-g-lang'));
+        this.goff.hidden = !CONFIG.allowTurnOff;
+      }
 
       const mount = function () {
         (document.body || document.documentElement).appendChild(host);
-        self.wave = new WaveformRenderer(self.canvas); self.wave.start();
+        self.wave = new WaveformRenderer(self.canvas);
+        if (G) {
+          self.radial = new RadialRenderer(self.gcanvas);
+          self.radial.onSlow = function () { self.setLite(true); };
+          self.setLite(self.liteWanted(), true);
+          self.radial.sleep = true; self.radial.start();       // the panel waveform stays idle: the circle is the visual
+        } else self.wave.start();
       };
       if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
 
-      const ready = function () { root.classList.add('vl-ready'); self.placeOrb(); self.wave && self.wave.resize(); };
+      const ready = function () { root.classList.add('vl-ready'); self.placeOrb(); self.wave && self.wave.resize(); self.radial && self.radial.resize(); };
       link.addEventListener('load', ready);
       link.addEventListener('error', function () { console.warn('[VoiceLayer] could not load voicelayer.css from', link.href); ready(); });
       setTimeout(function () { if (!root.classList.contains('vl-ready')) ready(); }, 3000);
@@ -1374,7 +2029,23 @@
         b.addEventListener('click', function () { self.h.onForce && self.h.onForce(b.getAttribute('data-force')); });
       });
 
-      window.addEventListener('resize', function () { self.placeOrb(); if (self.open) self.positionPanel(); self.wave && self.wave.resize(); self._updateRings(); });
+      if (G) {
+        this.gcircle.addEventListener('click', function () { self.h.onCircle && self.h.onCircle(); });
+        $('vl-g-pause').addEventListener('click', function () { self.h.onPause && self.h.onPause(); });
+        $('vl-g-x').addEventListener('click', function () { self.h.onClose && self.h.onClose(); });
+        $('vl-g-stop').addEventListener('click', function () { self.h.onStop && self.h.onStop(); });
+        this.gmute.addEventListener('click', function () { self.h.onMute && self.h.onMute(); });
+        this.goff.addEventListener('click', function () { self.h.onTurnOff && self.h.onTurnOff(); });
+        $('vl-g-why').addEventListener('click', function () { self.h.onAct && self.h.onAct('why'); });
+        $('vl-g-next').addEventListener('click', function () { self.h.onAct && self.h.onAct('next'); });
+        $('vl-g-yes').addEventListener('click', function () { self.h.onAct && self.h.onAct('yes'); });
+        $('vl-g-no').addEventListener('click', function () { self.h.onAct && self.h.onAct('no'); });
+        $('vl-g-form').addEventListener('submit', function (e) {
+          e.preventDefault(); const v = self.ginput.value; self.ginput.value = '';
+          if (clean(v)) self.h.onSubmit && self.h.onSubmit(v);
+        });
+      }
+      window.addEventListener('resize', function () { self.placeOrb(); if (self.open) self.positionPanel(); self.wave && self.wave.resize(); self.radial && self.radial.resize(); self._updateRings(); });
       this.buildLangSwitch();
       this.applyText();
     },
@@ -1397,26 +2068,114 @@
       this.offBtn.textContent = T.turnOff;
       this.$('vl-bubble-x').setAttribute('aria-label', T.dismiss);
       this.langBox.setAttribute('aria-label', T.lang);
-      qsa('[data-lang]', this.langBox).forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-lang') === LANG)); });
+      qsa('[data-lang]', this.root).forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-lang') === LANG)); });
+      if (this.isGlass) {
+        const $ = this.$;
+        this.glass.setAttribute('aria-label', T.gGlassLabel);
+        this.gcircle.setAttribute('aria-label', T.gCircleLabel);
+        $('vl-g-tap1').textContent = T.gTap; $('vl-g-tap2').textContent = T.gTapSub;
+        $('vl-g-pause').setAttribute('aria-label', T.gPause); $('vl-g-pause').title = T.gPause;
+        $('vl-g-x').setAttribute('aria-label', T.gClose); $('vl-g-x').title = T.gClose;
+        $('vl-g-stop').textContent = T.stop; $('vl-g-stop').setAttribute('aria-label', T.stopAll);
+        this.goff.textContent = T.turnOff; this.goff.setAttribute('aria-label', T.gOffTxt);
+        this.ginput.setAttribute('aria-label', T.typeLabel); this.ginput.placeholder = T.gTypeHere; $('vl-g-send').textContent = T.send;
+        $('vl-g-why').textContent = T.gWhy; $('vl-g-next').textContent = T.gNext; $('vl-g-yes').textContent = T.gShow; $('vl-g-no').textContent = T.gNotNow;
+        $('vl-g-demo').textContent = T.gDemo;
+        this.gcard.setAttribute('aria-label', T.gSuggest);
+      }
       this.setState(this._state);
       this.setMuteUI(this._muted);
       this.setMicUI(this._listening, this._micAvail, this._micReason);
       this.setEngine(this._engine);
       if (this.open) this.positionPanel();
+      this.updateHint();
     },
     buildLangSwitch: function () {
-      const self = this, box = this.langBox;
-      box.innerHTML = '';
+      const self = this;
       const list = (CONFIG.languages || []).filter(function (c) { return PACKS[c]; });
-      box.hidden = !(CONFIG.showLangSwitch && list.length > 1);
-      list.forEach(function (c) {
-        const b = document.createElement('button');
-        b.type = 'button'; b.className = 'vl-langbtn'; b.setAttribute('data-lang', c);
-        b.textContent = PACKS[c].short; b.title = PACKS[c].name; b.setAttribute('lang', c);
-        b.setAttribute('aria-pressed', String(c === LANG));
-        b.addEventListener('click', function () { self.h.onLang && self.h.onLang(c); });
-        box.appendChild(b);
+      this.langBoxes.forEach(function (box) {
+        box.innerHTML = '';
+        box.hidden = !(CONFIG.showLangSwitch && list.length > 1);
+        list.forEach(function (c) {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'vl-langbtn'; b.setAttribute('data-lang', c);
+          b.textContent = PACKS[c].short; b.title = PACKS[c].name; b.setAttribute('lang', c);
+          b.setAttribute('aria-pressed', String(c === LANG));
+          b.addEventListener('click', function () { self.h.onLang && self.h.onLang(c); });
+          box.appendChild(b);
+        });
       });
+    },
+
+    /* ---------------- glass mode ---------------- */
+    liteWanted: function () {
+      const g = CONFIG.glass.lite;
+      if (g === true || g === 'true') return true;
+      if (g === false || g === 'false') return false;
+      const noBlur = !(window.CSS && CSS.supports && (CSS.supports('backdrop-filter', 'blur(1px)') || CSS.supports('-webkit-backdrop-filter', 'blur(1px)')));
+      return noBlur || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (navigator.deviceMemory && navigator.deviceMemory <= 1) || false;
+    },
+    setLite: function (on, initial) {
+      this.root.setAttribute('data-lite', on ? 'true' : 'false');
+      if (this.radial) { this.radial.configure({ lite: on, auto: CONFIG.glass.lite === 'auto', hue: CONFIG.glass.hue }); this.radial.resize(); }
+      if (!initial) log('glass: switched to lite rendering');
+    },
+    /** awake = the visitor tapped the circle (the assistant may speak and the mic may be used). asleep = "tap to start". */
+    setAwake: function (on) {
+      if (!this.isGlass) return;
+      this.glass.setAttribute('data-awake', on ? 'true' : 'false');
+      if (this.radial) this.radial.sleep = !on;
+      this.updateHint();
+    },
+    setDemo: function (on) { if (this.isGlass) { this.$('vl-g-demo').hidden = !on; } },
+    updateHint: function () {
+      if (!this.isGlass) return;
+      const T = this.T || I.ui, awake = this.glass.getAttribute('data-awake') === 'true';
+      this.ghint.textContent = !awake ? '' : (this._listening ? T.states.listening : (this._state === 'idle' ? T.gTapMic : ''));
+    },
+    setLine: function (kind, text) {
+      if (!this.isGlass) return;
+      if (kind === 'user') { this.guser.textContent = text; return; }
+      this.guser.textContent = ''; this.gline.textContent = text; this.gline.setAttribute('data-kind', kind);
+    },
+    showCard: function (ins, i, n) {
+      if (!this.isGlass) return;
+      const T = this.T || I.ui, $ = this.$;
+      this.gcard.hidden = false; this.gcard.setAttribute('data-kind', ins.kind);
+      $('vl-g-kind').textContent = ins.kind === 'reminder' ? T.gKindReminder : ins.kind === 'praise' ? T.gKindPraise : T.gKindData;
+      $('vl-g-n').textContent = n > 1 ? (i + 1) + ' / ' + n : '';
+      $('vl-g-ctext').textContent = ins.text;
+      $('vl-g-because').hidden = true; $('vl-g-rx').hidden = true; $('vl-g-offer').hidden = true;
+      $('vl-g-next').hidden = !(i + 1 < n);
+      $('vl-g-why').hidden = false; $('vl-g-actions').hidden = false;
+      this.glass.setAttribute('data-card', 'true');
+    },
+    hideCard: function () {
+      if (!this.isGlass) return;
+      this.gcard.hidden = true; this.$('vl-g-offer').hidden = true; this.glass.setAttribute('data-card', 'false');
+    },
+    showWhy: function (on) {
+      if (!this.isGlass || !this.gcard || this.gcard.hidden) return;
+      const T = this.T || I.ui, c = Companion.cur, el = this.$('vl-g-because');
+      if (!c) { el.hidden = true; return; }
+      const w = c.why || {};
+      el.textContent = T.gBecause + ': ' + (c.because || '') + (w.label ? ' · ' + w.label + (w.date ? ', ' + w.date : '') : '') + (w.source ? ' · ' + T.gSource + ': ' + w.source : '');
+      el.hidden = !on;
+    },
+    showOffer: function (item, disc, accepted) {
+      if (!this.isGlass) return;
+      const $ = this.$; this.gcard.hidden = false; this.glass.setAttribute('data-card', 'true');
+      $('vl-g-offer').hidden = false; $('vl-g-offer').setAttribute('data-accepted', accepted ? 'true' : 'false');
+      $('vl-g-oname').textContent = (accepted ? '✓ ' : '') + loc(item.name) + (item.price ? ' · ' + item.price : '');
+      $('vl-g-disc').textContent = disc;
+      $('vl-g-orow').hidden = !!accepted; $('vl-g-actions').hidden = true;
+    },
+    hideOffer: function () { if (this.isGlass) { this.$('vl-g-offer').hidden = true; this.$('vl-g-actions').hidden = !Companion.cur; } },
+    showRx: function (item) {
+      if (!this.isGlass) return;
+      const el = this.$('vl-g-rx'), T = this.T || I.ui;
+      el.textContent = T.gProvider + ': ' + loc(item.name) + (item.provider ? ' — ' + loc(item.provider) : '');
+      el.hidden = false; this.gcard.hidden = false; this.glass.setAttribute('data-card', 'true');
     },
     setEngine: function (eng) {
       this._engine = eng;
@@ -1472,7 +2231,7 @@
       if (mode !== 'on') this.hideBubble();
       if (mode === 'min') this.placeTab();
     },
-    setOpen: function (on) {
+    setOpen: function (on, quiet) {
       this.open = !!on;
       this.root.setAttribute('data-open', on ? 'true' : 'false');
       this.orb.setAttribute('aria-expanded', on ? 'true' : 'false');
@@ -1480,7 +2239,8 @@
         this.hideBubble();
         this.positionPanel();
         this.wave && this.wave.resize();
-        const self = this; setTimeout(function () { try { self.panel.focus({ preventScroll: true }); } catch (e) {} }, 30);
+        this.radial && this.radial.resize();
+        const self = this; if (!quiet) setTimeout(function () { try { (self.isGlass ? self.gcircle : self.panel).focus({ preventScroll: true }); } catch (e) {} }, 30);   // never steal focus on an automatic open
       } else if (this.mode === 'on') { try { this.orb.focus({ preventScroll: true }); } catch (e) {} }
     },
 
@@ -1501,7 +2261,9 @@
       if (this.forced) s = this.forced;
       this.root.setAttribute('data-state', s);
       this.stateChip.textContent = (this.T || CONFIG.text).states[s] || s;
+      if (this.isGlass) this.gstate.textContent = this.stateChip.textContent;
       this.wave && this.wave.setState(s);
+      this.updateHint();
     },
     force: function (s) {
       this.forced = (s === 'auto' || !s) ? null : s;
@@ -1515,6 +2277,11 @@
       this.micTxt.textContent = listening ? T.micActive : T.micIdle;
       this.micBtn.disabled = !this._micAvail;
       this.micBtn.title = this._micAvail ? '' : (this._micReason || T.micUnavailableShort);
+      if (this.isGlass) {
+        this.glass.setAttribute('data-mic', listening ? 'on' : 'off');
+        this.gmictxt.textContent = listening ? T.gMicOn : T.gMicOff;
+        this.updateHint();
+      }
     },
     setMuteUI: function (muted) {
       this._muted = !!muted;
@@ -1522,6 +2289,10 @@
       this.muteBtn.innerHTML = muted ? ICON.mute : ICON.vol;
       this.muteBtn.setAttribute('aria-pressed', String(!!muted));
       this.muteBtn.setAttribute('aria-label', muted ? T.unmute : T.mute); this.muteBtn.title = muted ? T.unmute : T.mute;
+      if (this.isGlass) {
+        this.gmute.innerHTML = muted ? ICON.mute : ICON.vol; this.gmute.setAttribute('aria-pressed', String(!!muted));
+        this.gmute.setAttribute('aria-label', muted ? T.unmute : T.mute); this.gmute.title = muted ? T.unmute : T.mute;
+      }
     },
 
     /** kind: 'bot' | 'user' | 'sys' */
@@ -1534,9 +2305,10 @@
       while (this.captions.children.length > 60) this.captions.removeChild(this.captions.firstChild);
       this.captions.scrollTop = this.captions.scrollHeight;
       if (this.open) this.positionPanel();
+      this.setLine(kind, text);
       return d;
     },
-    setInterim: function (t) { this.interim.textContent = t || ''; },
+    setInterim: function (t) { this.interim.textContent = t || ''; if (this.isGlass) this.ginterim.textContent = t || ''; },
 
     /* ---- highlight rings. items: [{getRect():DOMRect-like, n?:number}] ---- */
     showRings: function (items, ms) {
@@ -1548,6 +2320,7 @@
         self.layer.appendChild(ring); self.rings.push({ it: it, el: ring });
       });
       this._updateRings();
+      this.root.setAttribute('data-rings', 'true');            // glass relaxes its blur so the highlighted element is readable
       if (!this._ringBound) {
         this._ringBound = true;
         const kick = function () { if (self.rings.length && !self._ringRaf) self._ringRaf = requestAnimationFrame(function () { self._ringRaf = 0; self._updateRings(); }); };
@@ -1568,6 +2341,7 @@
     clearRings: function () {
       clearTimeout(this._ringTimer);
       this.rings.forEach(function (r) { r.el.remove(); }); this.rings = [];
+      if (this.root) this.root.setAttribute('data-rings', 'false');
     }
   };
 
@@ -1763,7 +2537,7 @@
   const VL = {
     token: 0, busy: false, muted: false, speechStarted: false, pending: null, findState: null,
     introDone: false, receipts: [], lastSpeechEnd: 0, lastSpoken: '', state: 'idle', _interrupt: null,
-    mode: 'on', killed: false, touched: false, _bubbleT: 0, _bubbleHide: 0,
+    mode: 'on', killed: false, touched: false, _bubbleT: 0, _bubbleHide: 0, woke: false,
 
     init: function () {
       const self = this;
@@ -1774,9 +2548,13 @@
       if (q === 'off') store.set(KEYS.off, '1');
       this.mode = store.get(KEYS.off) === '1' ? 'off' : (store.get(KEYS.min) === '1' && CONFIG.allowMinimize ? 'min' : 'on');
       this.muted = store.get(KEYS.speak) === 'off';
+      Companion.init();
 
       UI.build({
         onOrb: function () { self.touched = true; Voice.unlock(); self.onOrb(); },
+        onCircle: function () { self.touched = true; Voice.unlock(); self.onCircle(); },
+        onPause: function () { self.touched = true; self.goToSleep(); },
+        onAct: function (k) { self.touched = true; Voice.unlock(); self.handleUtterance(I.cp.act[k], 'text'); },
         onMic: function () { self.touched = true; Voice.unlock(); self.toggleListening(); },
         onStop: function () { self.stop(true); },
         onClose: function () { self.close(); },
@@ -1874,14 +2652,15 @@
       if (mode === 'off') Scanner.unwatch();
       else if (initial && mode === 'min') Scanner.watch();
     },
+    sleepUI: function () { this.woke = false; UI.setAwake(false); },
     minimize: function () {
-      this.stop(false); UI.setOpen(false); UI.setInterim('');
+      this.stop(false); this.sleepUI(); UI.setOpen(false); UI.setInterim('');
       store.set(KEYS.min, '1'); this.applyMode('min');
       try { UI.tab.focus({ preventScroll: true }); } catch (e) {}
       this.refresh();
     },
     turnOff: function () {
-      this.stop(false); UI.setOpen(false); UI.setInterim('');
+      this.stop(false); this.sleepUI(); UI.setOpen(false); UI.setInterim('');
       store.set(KEYS.off, '1'); this.applyMode('off');
       UI.flash(M.offNote(CONFIG.hotkey || '—', !!document.querySelector('[data-voicelayer-open]')), 9000);
       this.refresh();
@@ -1910,7 +2689,8 @@
     /* ---------- proactive hint (silent, once per session, dismissible) ---------- */
     afterReveal: function () {
       const self = this;
-      if (this.mode === 'on' && CONFIG.bubble && !store.sget(KEYS.bubble)) {
+      if (CONFIG.mode === 'glass' && this.mode === 'on' && CONFIG.glass.autoOpen !== false && !store.sget(KEYS.gdismiss)) { UI.setOpen(true, true); UI.setAwake(false); this.refresh(); }   // asleep: no mic, no speech until the visitor taps
+      if (CONFIG.mode !== 'glass' && this.mode === 'on' && CONFIG.bubble && !store.sget(KEYS.bubble)) {
         this._bubbleT = setTimeout(function () { self.maybeBubble(); }, CONFIG.bubbleDelayMs);
       }
       // continue after an assistant-triggered navigation (panel re-opens; mic stays OFF)
@@ -1933,6 +2713,7 @@
       return { nav: pick, product: prod };
     },
     maybeBubble: function () {
+      if (CONFIG.mode === 'glass') return;
       if (this.killed || this.mode !== 'on' || UI.open || this.touched || store.sget(KEYS.bubble)) return;
       store.sset(KEYS.bubble, '1');                                   // once per browser session, whatever happens next
       UI.showBubble(M.bubble(this.bubbleContext()));
@@ -1949,6 +2730,7 @@
       Voice.resetVoice();
       UI.applyText();
       this.pending = null; this.findState = null;
+      try { Companion.onLang(); } catch (e) {}
       try { window.dispatchEvent(new CustomEvent('voicelayer:language', { detail: { language: code } })); } catch (e) {}
       if (UI.bubbleShown()) UI.showBubble(M.bubble(this.bubbleContext()));
       this.say(M.langChanged);
@@ -1958,6 +2740,9 @@
     /* ---------- open / close / listening ---------- */
     open: function (listen) {
       if (this.mode !== 'on') { store.set(KEYS.off, null); store.set(KEYS.min, null); this.applyMode('on'); }
+      if (CONFIG.mode === 'glass') {                              // glass opens asleep: the circle tap is the only thing that wakes it
+        UI.setOpen(true); UI.setAwake(this.woke); store.sset(KEYS.gdismiss, null); this.checkRemote(); this.refresh(); this.glassEvent('open'); return;
+      }
       UI.setOpen(true);
       this.checkRemote();
       if (!this.introDone) {
@@ -1970,11 +2755,45 @@
       this.refresh();
     },
     close: function () {
-      this.stop(false);
+      this.stop(false); this.sleepUI();
       UI.setOpen(false); UI.setInterim('');
+      if (CONFIG.mode === 'glass') { store.sset(KEYS.gdismiss, '1'); this.glassEvent('closed'); }
       this.refresh();
     },
+    glassEvent: function (s) { try { window.dispatchEvent(new CustomEvent('voicelayer:glass', { detail: { state: s } })); } catch (e) {} },
+
+    /** WAKE — the one tap that lets the assistant speak first. Greeting (+ first question) is spoken, THEN the mic opens. */
+    wake: async function () {
+      if (this.killed || this.mode !== 'on' || CONFIG.mode !== 'glass') return;
+      if (!UI.open) UI.setOpen(true);
+      this.woke = true; this.touched = true; this.introDone = true; Voice.unlock(); UI.setAwake(true);
+      store.sset(KEYS.gdismiss, null);
+      const tok = ++this.token, alive = function () { return tok === VL.token && VL.woke; };
+      this.busy = false; this.glassEvent('awake');
+      try {
+        if (!Voice.supportsRecognition()) UI.addLine('sys', M.noRec);
+        if (Companion.enabled()) await Companion.begin(alive);
+        else await this.say(CONFIG.greeting ? greetingText() : I.cp.plainGreet);
+        if (alive() && UI.open && Voice.supportsRecognition() && !Voice.isListening()) await this.startListening();   // mic opens AFTER the opening line, never over it
+      } catch (e) { console.error('[VoiceLayer]', e); }
+      this.refresh();
+    },
+    /** PAUSE — back to "tap to start": speech cancelled, mic released, glass stays visible */
+    goToSleep: function () {
+      this.stop(false); this.sleepUI(); UI.setInterim(''); this.glassEvent('asleep'); this.refresh();
+    },
+    /** the circle: asleep → wake · speaking → interrupt and listen · listening → pause the mic · otherwise → listen */
+    onCircle: function () {
+      if (!this.woke) return this.wake();
+      if (Voice.isSpeaking()) {                                    // barge-in: drop the rest of what I was going to say
+        this.token++; this.busy = false; this.speechStarted = false; Voice.cancelSpeech();
+        return this.startListening();
+      }
+      if (this.busy) { this.stop(false); return; }
+      this.toggleListening();
+    },
     onOrb: function () {
+      if (CONFIG.mode === 'glass') { if (!UI.open) this.open(false); return this.wake(); }   // the orb is an explicit "start" control
       if (!UI.open) return this.open(true);                       // tap = open + (consent gesture) start mic
       if (Voice.isSpeaking()) { Voice.cancelSpeech(); this.refresh(); return; }   // barge-in
       this.toggleListening();
@@ -2026,7 +2845,7 @@
     setBusy: function (b) { this.busy = b; this.refresh(); },
 
     /* ---------- output ---------- */
-    canSpeak: function () { return CONFIG.speak && !this.muted && Voice.supportsSpeech() && UI.open; },
+    canSpeak: function () { return CONFIG.speak && !this.muted && Voice.supportsSpeech() && UI.open && (CONFIG.mode !== 'glass' || this.woke); },
     /** show a caption and (unless silent/muted) speak it. Interrupts anything currently being spoken. */
     say: function (text, o) {
       o = o || {};
@@ -2065,17 +2884,22 @@
       const alive = function () { return tok === VL.token; };
       this.setBusy(true);
       try {
-        let intent;
+        let intent, viaPending = false;
         const pend = this.pending, t = norm(text);
+        if ((CONFIG.mode === 'glass' || Companion.enabled()) && I.cp.crisisRe.test(t)) { await Companion.crisis(); return; }     // safety first: nothing else runs
         if (pend && performance.now() < pend.until) {
           const r = this.resolvePending(pend, t);
-          if (r) { this.pending = null; intent = r; }
+          if (r) { this.pending = null; intent = r; viaPending = true; }
         } else this.pending = null;
         intent = intent || parse(text);
         try { window.dispatchEvent(new CustomEvent('voicelayer:command', { detail: { text: text, intent: intent.type, arg: intent.arg || '', language: LANG } })); } catch (e) {}
         log('intent', intent);
         await sleep(CONFIG.thinkingMs);
         if (!alive()) return;
+        if (!viaPending && CONFIG.mode === 'glass' && this.woke) {
+          if (await this.glassCommand(t, alive)) return;
+          if (Companion.engaged() && await Companion.intercept(text, intent, tok, alive)) return;
+        }
         if (!Scanner.map || Date.now() - Scanner.map.scannedAt > 1500) Scanner.scan();
         await this.exec(intent, tok, alive);
       } catch (e) {
@@ -2086,6 +2910,17 @@
       }
     },
 
+    /** voice control of the glass itself (works in both languages) */
+    glassCommand: async function (t, alive) {
+      const P = I.cp; let m;
+      if (P.cmdMute.test(t)) { this.setMuted(true); await this.say(P.ackMute); return true; }
+      if (P.cmdUnmute.test(t)) { this.setMuted(false); await this.say(P.ackUnmute); return true; }
+      if (P.cmdSleep.test(t)) { await this.say(P.ackSleep); if (alive()) this.goToSleep(); return true; }
+      if (P.cmdOff.test(t) && CONFIG.allowTurnOff) { this.turnOff(); return true; }
+      if (P.cmdMin.test(t)) { this.close(); return true; }
+      if ((m = t.match(P.cmdLang)) && P.langMap[m[1]] && (CONFIG.languages || []).indexOf(P.langMap[m[1]]) >= 0) { await this.changeLanguage(P.langMap[m[1]], true); return true; }
+      return false;
+    },
     resolvePending: function (pend, t) {
       if (pend.kind === 'confirm') {
         if (I.yes.test(t)) return { type: '_confirmed', run: pend.run };
@@ -2484,6 +3319,19 @@
     minimize: function () { VL.minimize(); },
     turnOff: function () { VL.turnOff(); },
     show: function () { VL.restore(true); },
+    /** glass mode: wake (speak first, then listen) / pause. Wake only works from inside a user gesture (browser rule). */
+    wake: function () { return VL.wake(); },
+    pause: function () { VL.goToSleep(); },
+    get awake() { return !!VL.woke; },
+    /** feed the Companion fresh data: VoiceLayer.setSignals({ metrics:{…}, tasks:[…] }) */
+    setSignals: function (s) { Companion.setSignals(s); },
+    companion: {
+      get enabled() { return Companion.enabled(); },
+      get preset() { return Companion.cfg ? Companion.cfg.preset : null; },
+      get stage() { return Companion.stage; },
+      get insights() { return Companion.insights.map(function (x) { return { rule: x.rule, kind: x.kind, text: x.text, offer: x.offer ? x.offer.id : null, rx: x.rx ? x.rx.id : null }; }); },
+      get rules() { return Companion.rules ? Companion.rules.map(function (r) { return r.id; }) : []; }
+    },
     setLanguage: function (c) { return VL.changeLanguage(String(c || '').toLowerCase().split('-')[0], true); },
     get language() { return LANG; },
     get mode() { return VL.mode; },
@@ -2496,6 +3344,8 @@
     debug: {
       force: function (s) { UI.force(s); VL.refresh(); },
       level: function () { return UI.wave ? UI.wave.lastLevel : 0; },
+      lite: function () { return !!(UI.radial && UI.radial.lite); },
+      radius: function () { return UI.radial ? UI.radial.R : 0; },
       hasAnalyser: function () { return !!(UI.wave && UI.wave.analyser); },
       hasOutAnalyser: function () { return !!(UI.wave && UI.wave.outAnalyser); },
       parse: parse,

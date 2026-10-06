@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aurora Audio — VoiceLayer GLASS demo (the store is only a backdrop)</title>
+  <meta name="description" content="Aurora Audio is a small demo shop selling headphones, speakers and accessories, with free shipping over $50 and 30-day returns.">
+  <style>
+    :root { --ink:#101828; --mute:#586174; --line:#e4e7ee; --brand:#2d4fd6; --bg:#f6f8fc; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin:0; font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+    header.site { position:sticky; top:0; z-index:20; background:#fff; border-bottom:1px solid var(--line); }
+    header.site .bar { max-width:1080px; margin:0 auto; padding:12px 20px; display:flex; align-items:center; gap:24px; }
+    .logo { font-weight:800; letter-spacing:.3px; font-size:20px; color:var(--brand); text-decoration:none; }
+    nav { display:flex; gap:18px; flex:1; flex-wrap:wrap; }
+    nav a { color:var(--ink); text-decoration:none; font-weight:500; }
+    nav a:hover { color:var(--brand); }
+    .cart-pill { border:1px solid var(--line); background:#fff; border-radius:999px; padding:6px 14px; font-weight:600; cursor:pointer; }
+    .cart-pill b { display:inline-block; min-width:22px; padding:0 6px; margin-left:6px; border-radius:11px; background:var(--brand); color:#fff; text-align:center; }
+    main { max-width:1080px; margin:0 auto; padding:0 20px 60px; }
+    .hero { padding:64px 0 40px; }
+    .hero h1 { font-size:clamp(32px,5vw,52px); line-height:1.1; margin:0 0 14px; }
+    .hero p { font-size:19px; color:var(--mute); max-width:620px; }
+    .btn { display:inline-block; border:0; border-radius:10px; padding:11px 18px; font:600 15px system-ui; cursor:pointer; background:var(--brand); color:#fff; text-decoration:none; }
+    .btn.alt { background:#fff; color:var(--brand); border:1px solid var(--brand); }
+    .btn:disabled { background:#c9cfdd; cursor:not-allowed; }
+    section { padding:36px 0; scroll-margin-top:84px; }
+    section > h2 { font-size:28px; margin:0 0 18px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:20px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:8px; }
+    .card .pic { height:130px; border-radius:12px; display:grid; place-items:center; font-size:54px; background:linear-gradient(135deg,#dfe7ff,#f0f4ff); }
+    .card h3 { margin:4px 0 0; font-size:18px; }
+    .card p { margin:0; color:var(--mute); font-size:14px; }
+    .price { font-size:22px; font-weight:800; }
+    .price s { font-size:14px; font-weight:500; color:var(--mute); margin-left:6px; }
+    .card .row { margin-top:auto; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .badge { font-size:12px; font-weight:700; color:#0a7a3d; background:#e3f7ec; border-radius:6px; padding:2px 8px; align-self:flex-start; }
+    .badge.out { color:#8a4b00; background:#fff1dc; }
+    .two { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    @media (max-width:700px){ .two { grid-template-columns:1fr; } nav { gap:12px; font-size:14px; } }
+    .panel { background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px; }
+    table { width:100%; border-collapse:collapse; font-size:15px; } th,td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); }
+    details { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin-bottom:10px; }
+    summary { cursor:pointer; font-weight:600; }
+    #cart-summary { margin-top:16px; }
+    #cart-summary li { margin:2px 0; }
+    #analytics { font:12px/1.5 ui-monospace,Menlo,Consolas,monospace; background:#0f172a; color:#9fe1b4; border-radius:12px; padding:12px 14px; min-height:74px; max-height:150px; overflow:auto; white-space:pre-wrap; }
+    footer { background:#0f172a; color:#cbd5e1; padding:30px 20px 90px; }
+    footer .in { max-width:1080px; margin:0 auto; display:flex; gap:30px; flex-wrap:wrap; justify-content:space-between; }
+    footer a { color:#9db8ff; }
+    #toast { position:fixed; left:50%; bottom:90px; transform:translateX(-50%) translateY(20px); background:#0f172a; color:#fff; padding:10px 18px; border-radius:10px; opacity:0; transition:.3s; pointer-events:none; z-index:30; }
+    #toast.on { opacity:1; transform:translateX(-50%); }
+  </style>
+  <style>
+    .vl-demobar { position:fixed; left:10px; bottom:10px; z-index:2147483647; display:flex; gap:6px; flex-wrap:wrap; align-items:center; max-width:calc(100vw - 20px);
+      padding:6px 8px; border-radius:12px; font:12px system-ui,sans-serif; background:rgba(255,255,255,.92); color:#101828; border:1px solid #cfd6e6; box-shadow:0 6px 20px rgba(0,0,0,.18); }
+    .vl-demobar b { font-weight:700; margin-right:2px; }
+    .vl-demobar a { color:#2d4fd6; text-decoration:none; padding:3px 8px; border-radius:8px; border:1px solid #cfd6e6; background:#fff; }
+    .vl-demobar a[aria-current="true"] { background:#2d4fd6; color:#fff; border-color:#2d4fd6; }
+    @media (max-width:700px) { .vl-demobar { display:none; } }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <div class="bar">
+      <a class="logo" href="#top">Aurora Audio</a>
+      <nav aria-label="Main">
+        <a href="#products">Products</a>
+        <a href="#shipping">Shipping</a>
+        <a href="#about">About us</a>
+        <a href="#faq">FAQ</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <button class="cart-pill" id="open-cart" type="button">Cart<b id="cart-count" data-cart-count>0</b></button>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="hero">
+      <h1>Sound that gets out of your way.</h1>
+      <p>Aurora Audio makes honest headphones and speakers at fair prices. Free shipping over $50, 30-day returns, two-year warranty.</p>
+      <p><a class="btn" href="#products">Shop headphones</a> &nbsp; <a class="btn alt" href="#about">Our story</a></p>
+    </div>
+
+    <section id="products">
+      <h2>Products</h2>
+      <div class="grid">
+        <article class="card" data-sku="AUR-100">
+          <div class="pic" aria-hidden="true">🎧</div>
+          <span class="badge">In stock</span>
+          <h3>Aurora One Headphones</h3>
+          <p>Over-ear wireless, 40-hour battery, active noise cancelling.</p>
+          <div class="row"><span class="price">$129.00</span><button class="btn add" type="button" data-name="Aurora One Headphones" data-price="129">Add to cart</button></div>
+        </article>
+        <article class="card" data-sku="AUR-200">
+          <div class="pic" aria-hidden="true">🔊</div>
+          <span class="badge">In stock</span>
+          <h3>Nova Mini Speaker</h3>
+          <p>Pocket-sized Bluetooth speaker, waterproof, 12-hour battery.</p>
+          <div class="row"><span class="price">$49.00 <s>$59.00</s></span><button class="btn add" type="button" data-name="Nova Mini Speaker" data-price="49">Add to cart</button></div>
+        </article>
+        <article class="card" data-sku="AUR-300">
+          <div class="pic" aria-hidden="true">🎵</div>
+          <span class="badge">In stock</span>
+          <h3>Pulse Earbuds</h3>
+          <p>True wireless earbuds with a pocket charging case.</p>
+          <div class="row"><span class="price">$79.00</span><button class="btn add" type="button" data-name="Pulse Earbuds" data-price="79">Add to cart</button></div>
+        </article>
+        <article class="card" data-sku="AUR-400">
+          <div class="pic" aria-hidden="true">🎙️</div>
+          <span class="badge out">Sold out</span>
+          <h3>Studio Pro Headphones</h3>
+          <p>Wired reference headphones for mixing. Back in stock next month.</p>
+          <div class="row"><span class="price">$199.00</span><button class="btn add" type="button" disabled data-name="Studio Pro Headphones" data-price="199">Sold out</button></div>
+        </article>
+      </div>
+      <div id="cart-summary" class="panel" hidden>
+        <strong>Your cart</strong>
+        <ul id="cart-lines"></ul>
+        <p>Total: <strong id="cart-total">$0.00</strong></p>
+        <button class="btn" id="checkout" type="button">Checkout</button>
+        <button class="btn alt" id="clear-cart" type="button">Empty cart</button>
+      </div>
+    </section>
+
+    <section id="shipping">
+      <h2>Shipping &amp; returns</h2>
+      <div class="two">
+        <div class="panel">
+          <h3 style="margin-top:0">Delivery</h3>
+          <table>
+            <tr><th>Method</th><th>Time</th><th>Cost</th></tr>
+            <tr><td>Standard</td><td>3–5 business days</td><td>$5.00 (free over $50)</td></tr>
+            <tr><td>Express</td><td>1–2 business days</td><td>$15.00</td></tr>
+          </table>
+        </div>
+        <div class="panel">
+          <h3 style="margin-top:0">Returns</h3>
+          <p>Not happy? Send it back within 30 days for a full refund. Items must be in their original packaging. Refunds arrive within 5 business days of us receiving the parcel.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="about">
+      <h2>About us</h2>
+      <div class="panel">
+        <p>Aurora Audio started in 2019 with one idea: good sound shouldn’t cost a month’s rent. We design in Lisbon, test with real listeners, and sell directly so there’s no retail markup.</p>
+        <p>Every product ships with a two-year warranty and free repairs.</p>
+      </div>
+    </section>
+
+    <section id="faq">
+      <h2>FAQ</h2>
+      <details><summary>Do you ship internationally?</summary><p>Yes — we ship to over 40 countries. Customs fees are paid by the buyer.</p></details>
+      <details><summary>How long does the battery last?</summary><p>Aurora One: 40 hours. Nova Mini: 12 hours. Pulse Earbuds: 8 hours plus 24 from the case.</p></details>
+      <details><summary>Can I pay with a gift card?</summary><p>Yes, enter the code at checkout.</p></details>
+    </section>
+
+    <section id="contact">
+      <h2>Contact</h2>
+      <div class="panel">
+        <p>Email <a href="mailto:hello@aurora-audio.example">hello@aurora-audio.example</a> — we reply within one business day.</p>
+        <button class="btn alt" id="subscribe" type="button">Subscribe to newsletter</button>
+      </div>
+    </section>
+
+    <section id="analytics-section" data-vl-ignore>
+      <h2>Site analytics (proof that real events fire)</h2>
+      <div class="panel">
+        <p style="margin-top:0;color:#586174;font-size:14px">This fake analytics script listens for clicks on the page like a real tracking tag would. When VoiceLayer clicks something, it shows up here.</p>
+        <div id="analytics" aria-live="off">(waiting for clicks…)</div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="in">
+      <div><strong>Aurora Audio</strong><br>Rua das Flores 12, Lisbon</div>
+      <div><a href="#shipping">Shipping</a><br><a href="#faq">FAQ</a><br><a href="#contact">Contact</a></div>
+      <div>© 2026 Aurora Audio (fictional demo store)<br><a href="#" data-voicelayer-open id="voice-help-link">Voice help</a> · <a href="demo-es">Español</a></div>
+    </div>
+  </footer>
+  <div id="toast" role="status"></div>
+
+  <script>
+    /* ---- tiny fake store so there is something real to click ---- */
+    (function () {
+      var cart = [], $ = function (s) { return document.querySelector(s); };
+      function money(n) { return '$' + n.toFixed(2); }
+      function render() {
+        $('#cart-count').textContent = cart.length;
+        var box = $('#cart-summary'); box.hidden = cart.length === 0;
+        $('#cart-lines').innerHTML = cart.map(function (c) { return '<li>' + c.name + ' — ' + money(c.price) + '</li>'; }).join('');
+        $('#cart-total').textContent = money(cart.reduce(function (s, c) { return s + c.price; }, 0));
+      }
+      function toast(t) { var el = $('#toast'); el.textContent = t; el.classList.add('on'); setTimeout(function () { el.classList.remove('on'); }, 1800); }
+      document.querySelectorAll('.add').forEach(function (b) {
+        b.addEventListener('click', function () {
+          cart.push({ name: b.dataset.name, price: +b.dataset.price }); render(); toast('Added ' + b.dataset.name + ' to cart');
+        });
+      });
+      $('#open-cart').addEventListener('click', function () { if (!cart.length) toast('Your cart is empty'); else $('#cart-summary').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+      $('#checkout').addEventListener('click', function () { toast('Demo store — no real checkout'); });
+      $('#clear-cart').addEventListener('click', function () { cart = []; render(); toast('Cart emptied'); });
+      $('#subscribe').addEventListener('click', function () { toast('Thanks! (demo — nothing was sent)'); });
+
+      /* ---- fake analytics: logs every click, and whether it was a real user click (isTrusted) or a script-dispatched one ---- */
+      var log = $('#analytics'), first = true;
+      window.__clickLog = [];
+      document.addEventListener('click', function (e) {
+        var t = e.target.closest('button,a,summary') || e.target;
+        var label = (t.innerText || t.id || t.tagName).trim().slice(0, 40);
+        window.__clickLog.push({ label: label, trusted: e.isTrusted, t: Date.now() });
+        if (first) { log.textContent = ''; first = false; }
+        log.textContent += new Date().toLocaleTimeString() + '  click  "' + label + '"  isTrusted=' + e.isTrusted + '\n';
+        log.scrollTop = log.scrollHeight;
+      }, true);
+    })();
+  </script>
+
+  <!-- VoiceLayer: the ONE line a site owner adds. Debug is on here so the visual states can be reviewed without a mic. -->
+  <nav class="vl-demobar" aria-label="Glass demo controls" data-vl-ignore id="demobar"></nav>
+  <script>
+    // Glass demo: ?preset=wellness|training|coaching|support|none   &lang=en|es   &blur=14  &tint=0.22  &hue=215  &lite=true|false   &speak=0 (silent)
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var preset = q.get('preset') || 'wellness', lang = q.get('lang') || 'auto';
+      window.VoiceLayerConfig = {
+        mode: 'glass', language: lang, apiBase: '/api/voice', debug: q.get('debug') === '1', bubble: false,
+        glass: { blur: +(q.get('blur') || 14), tint: +(q.get('tint') || 0.22), hue: +(q.get('hue') || 215), lite: q.get('lite') == null ? 'auto' : q.get('lite') === 'true' },
+        companion: { preset: preset, name: 'Boss', demo: true }      // demo:true → clearly-labelled DEMO DATA; replace with your real signals
+      };
+      var bar = document.getElementById('demobar');
+      var link = function (label, params, cur) { var u = new URLSearchParams(q); Object.keys(params).forEach(function (k) { u.set(k, params[k]); });
+        return '<a href="?' + u.toString() + '"' + (cur ? ' aria-current="true"' : '') + '>' + label + '</a>'; };
+      bar.innerHTML = '<b>Demo</b>' + ['wellness', 'training', 'coaching', 'support'].map(function (p) { return link(p, { preset: p }, p === preset); }).join('') +
+        '<b>|</b>' + link('EN', { lang: 'en' }, lang === 'en') + link('ES', { lang: 'es' }, lang === 'es');
+    })();
+  </script>
+  <script src="voicelayer.js" defer></script>
+</body>
+</html>

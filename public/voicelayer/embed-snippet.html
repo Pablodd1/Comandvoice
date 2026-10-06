@@ -1,5 +1,5 @@
 <!--
-  VoiceLayer — install snippet (v0.2.0)
+  VoiceLayer — install snippet (v0.3.0)
   ------------------------------------------------------------------
   1. Upload voicelayer.js and voicelayer.css to the SAME folder on your host.
   2. Paste the ONE line below just before </body> on any page (or into your
@@ -28,6 +28,20 @@
 
   Or use data attributes on the script tag:
   <script src="voicelayer.js" data-language="es" data-api="/api/voice" data-corner="bottom-left" defer></script>
+
+  GLASS MODE (full-page frosted glass + voice-reactive circle; the assistant speaks first after ONE tap):
+
+  <script>
+    window.VoiceLayerConfig = {
+      mode: 'glass',
+      glass: { blur: 14, tint: 0.22, hue: 215, lite: 'auto', passThrough: true },
+      companion: { preset: 'wellness',   // 'wellness' | 'training' | 'coaching' | 'support' | 'none'
+                   name: 'Alex', demo: true }   // demo:true = fake data, badged and announced. Remove for real data.
+    };
+  </script>
+  Or: <script src="voicelayer.js" data-mode="glass" data-preset="training" data-name="Alex" data-demo="true" defer></script>
+  Feed real data with companion.signals (object | function | Promise), companion.signalsUrl, or VoiceLayer.setSignals({...}).
+  See README.md sections 2b and 2c (rules, approved catalog, guardrails, events, legal note).
 
   A "bring it back" link anywhere on your page (for visitors who turned it off):
   <a href="#" data-voicelayer-open>Voice help</a>
