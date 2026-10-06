@@ -1,0 +1,29 @@
+<!--
+  VoiceLayer — install snippet
+  ------------------------------------------------------------------
+  1. Upload voicelayer.js and voicelayer.css to the SAME folder on your host.
+  2. Paste the ONE line below just before </body> on any page (or into your
+     theme / site-builder "custom code" box: WordPress, Wix, Shopify, Squarespace...).
+-->
+
+<script src="https://YOUR-SITE.example/voicelayer/voicelayer.js" defer></script>
+
+<!--
+  OPTIONAL — customise without editing the JS file. Put this ABOVE the line above:
+
+  <script>
+    window.VoiceLayerConfig = {
+      language: 'en-US',                       // speech language
+      greeting: 'Hi! How can I help?',
+      orbPosition: { corner: 'bottom-left', offsetX: 24, offsetY: 24 },
+      speakGreeting: false,
+      debug: false                             // true = show the "force state" review buttons
+    };
+  </script>
+
+  Or use data attributes on the script tag itself:
+  <script src="voicelayer.js" data-language="en-GB" data-corner="bottom-left" defer></script>
+
+  Local testing: just double-click demo.html (Chrome/Edge). Microphone permission
+  works best from http://localhost or https:// — see README.md.
+-->

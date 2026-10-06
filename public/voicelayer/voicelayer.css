@@ -1,0 +1,261 @@
+/*!
+ * VoiceLayer — Phase 0 demo stylesheet
+ * Loaded INSIDE the widget's Shadow DOM, so it can never leak into (or be broken by) the host site.
+ *
+ * Palette: deep-to-bright blue family only.
+ *   idle      #1e3a8a-range (deep blue)      -> slow breathing glow
+ *   listening electric blue                   -> halo + sonar rings
+ *   thinking  dim steel-blue                  -> slow sweep
+ *   speaking  soft cyan tint                  -> steady glow
+ * All glows are layered box-shadows (no images). State changes ease over 300ms.
+ */
+
+:host { all: initial; }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+.vl-root {
+  --vl-ease: 300ms ease;
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #eaf1ff;
+  -webkit-font-smoothing: antialiased;
+  visibility: hidden;             /* revealed once this stylesheet has loaded (no flash of unstyled widget) */
+}
+.vl-root.vl-ready { visibility: visible; }
+
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible {
+  outline: 2px solid #9cc3ff; outline-offset: 2px;
+}
+
+/* ───────────────────────── ORB ───────────────────────── */
+.vl-orb {
+  position: fixed; z-index: 2147483646;
+  left: 0; top: 0;
+  width: 60px; height: 60px; padding: 0; border: 0; border-radius: 50%;
+  display: grid; place-items: center;
+  color: #fff;
+  background: radial-gradient(circle at 35% 28%, #5b8cf5 0%, #2c55c9 45%, #1e3a8a 100%);
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  cursor: grab;
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.35),
+    inset 0 -6px 12px rgba(10,20,70,.45),
+    0 6px 22px rgba(30,58,138,.55),
+    0 0 26px rgba(59,110,230,.35);
+  transition: box-shadow var(--vl-ease), background var(--vl-ease), transform var(--vl-ease);
+}
+.vl-orb:active { cursor: grabbing; }
+.vl-orb svg { width: 26px; height: 26px; pointer-events: none; filter: drop-shadow(0 1px 2px rgba(0,0,40,.5)); }
+
+/* sonar rings (used while listening) */
+.vl-orb::before, .vl-orb::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid rgba(96,165,250,.75);
+  opacity: 0; pointer-events: none; transform: scale(1);
+}
+
+/* IDLE — slow gentle breathing (4s) */
+.vl-root[data-state="idle"] .vl-orb { animation: vl-breathe 4s ease-in-out infinite; }
+@keyframes vl-breathe {
+  0%, 100% { transform: scale(1);    box-shadow: inset 0 1px 1px rgba(255,255,255,.35), inset 0 -6px 12px rgba(10,20,70,.45), 0 6px 22px rgba(30,58,138,.50), 0 0 18px rgba(59,110,230,.22); }
+  50%      { transform: scale(1.045); box-shadow: inset 0 1px 1px rgba(255,255,255,.35), inset 0 -6px 12px rgba(10,20,70,.45), 0 6px 26px rgba(30,58,138,.60), 0 0 38px rgba(70,125,245,.45); }
+}
+
+/* LISTENING — bright halo pulse + expanding sonar rings */
+.vl-root[data-state="listening"] .vl-orb {
+  background: radial-gradient(circle at 35% 28%, #8dc1ff 0%, #3b82f6 48%, #1d4ed8 100%);
+  animation: vl-halo 1.3s ease-in-out infinite;
+}
+.vl-root[data-state="listening"] .vl-orb::before { animation: vl-sonar 2.2s ease-out infinite; }
+.vl-root[data-state="listening"] .vl-orb::after  { animation: vl-sonar 2.2s ease-out 1.1s infinite; }
+@keyframes vl-halo {
+  0%, 100% { box-shadow: inset 0 1px 1px rgba(255,255,255,.4), 0 0 0 0 rgba(96,165,250,.55), 0 0 26px rgba(59,130,246,.65); }
+  50%      { box-shadow: inset 0 1px 1px rgba(255,255,255,.4), 0 0 0 9px rgba(96,165,250,.0), 0 0 48px rgba(96,175,255,.95); }
+}
+@keyframes vl-sonar {
+  0%   { transform: scale(1);   opacity: .85; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+/* THINKING — dimmer, slow sweep */
+.vl-root[data-state="thinking"] .vl-orb {
+  background: radial-gradient(circle at 35% 28%, #6f8fd6 0%, #34509a 50%, #1e3a8a 100%);
+  animation: vl-think 1.8s ease-in-out infinite;
+}
+.vl-root[data-state="thinking"] .vl-orb::before {
+  opacity: .9; inset: -5px;
+  border: 2px solid transparent; border-top-color: rgba(140,180,255,.9); border-right-color: rgba(140,180,255,.35);
+  animation: vl-spin 1.2s linear infinite;
+}
+@keyframes vl-think {
+  0%, 100% { box-shadow: inset 0 1px 1px rgba(255,255,255,.3), 0 6px 18px rgba(30,58,138,.5), 0 0 16px rgba(80,120,210,.30); }
+  50%      { box-shadow: inset 0 1px 1px rgba(255,255,255,.3), 0 6px 18px rgba(30,58,138,.5), 0 0 28px rgba(100,140,230,.50); }
+}
+@keyframes vl-spin { to { transform: rotate(360deg); } }
+
+/* SPEAKING — steady soft-cyan glow */
+.vl-root[data-state="speaking"] .vl-orb {
+  background: radial-gradient(circle at 35% 28%, #c4f1ff 0%, #5bc6f2 45%, #2563eb 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.5),
+    0 6px 22px rgba(37,99,235,.5),
+    0 0 36px rgba(110,220,255,.75),
+    0 0 70px rgba(80,190,255,.35);
+}
+
+.vl-root[data-open="true"] .vl-orb { z-index: 2147483646; }
+
+/* ───────────────────────── PANEL ───────────────────────── */
+.vl-panel {
+  position: fixed; z-index: 2147483647;
+  left: 0; top: 0;
+  width: 380px; max-width: calc(100vw - 16px);
+  padding: 14px 14px 12px;
+  border-radius: 20px;
+  background: rgba(10, 18, 42, .58);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid rgba(140,180,255,.26);
+  box-shadow: 0 22px 60px rgba(0,10,40,.50), inset 0 1px 0 rgba(255,255,255,.14);
+  opacity: 0; visibility: hidden; transform: translateY(10px) scale(.98); transform-origin: bottom right;
+  pointer-events: none;
+  transition: opacity var(--vl-ease), transform var(--vl-ease), visibility 0s linear 300ms;
+}
+.vl-root[data-open="true"] .vl-panel {
+  opacity: 1; visibility: visible; transform: none; pointer-events: auto;
+  transition: opacity var(--vl-ease), transform var(--vl-ease), visibility 0s;
+}
+
+/* thin pulsing blue ring around the panel border while listening (visible "recording" cue) */
+.vl-panel::after {
+  content: ""; position: absolute; inset: -2px; border-radius: 22px; pointer-events: none;
+  border: 2px solid rgba(90,165,255,.95);
+  box-shadow: 0 0 22px rgba(80,160,255,.55), inset 0 0 18px rgba(80,160,255,.25);
+  opacity: 0; transition: opacity var(--vl-ease);
+}
+.vl-root[data-state="listening"] .vl-panel::after { opacity: .9; animation: vl-ringpulse 2.4s ease-in-out infinite; }
+@keyframes vl-ringpulse { 0%, 100% { opacity: .30; } 50% { opacity: .95; } }
+
+.vl-head { display: flex; align-items: center; gap: 8px; }
+.vl-title { font-weight: 650; letter-spacing: .2px; font-size: 14px; }
+.vl-state {
+  margin-left: 2px; padding: 2px 9px 2px 8px; border-radius: 999px; font-size: 12px;
+  background: rgba(60,100,200,.28); border: 1px solid rgba(140,180,255,.25); color: #cfe0ff;
+  display: inline-flex; align-items: center; gap: 6px; transition: background var(--vl-ease), color var(--vl-ease);
+}
+.vl-state::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%; background: #5b84e6;
+  box-shadow: 0 0 8px currentColor; transition: background var(--vl-ease);
+}
+.vl-root[data-state="listening"] .vl-state { background: rgba(59,130,246,.40); color: #fff; }
+.vl-root[data-state="listening"] .vl-state::before { background: #7cc0ff; animation: vl-blink 1.1s ease-in-out infinite; }
+.vl-root[data-state="thinking"]  .vl-state::before { background: #8aa4dd; }
+.vl-root[data-state="speaking"]  .vl-state { background: rgba(80,190,240,.30); color: #e6fbff; }
+.vl-root[data-state="speaking"]  .vl-state::before { background: #7fe3ff; }
+@keyframes vl-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+.vl-spacer { flex: 1; }
+.vl-iconbtn {
+  width: 32px; height: 32px; padding: 0; border-radius: 10px; border: 1px solid transparent;
+  background: transparent; display: grid; place-items: center; color: #cfe0ff;
+  transition: background var(--vl-ease);
+}
+.vl-iconbtn:hover { background: rgba(120,160,255,.20); }
+.vl-iconbtn svg { width: 18px; height: 18px; }
+
+.vl-wave {
+  display: block; width: 100%; height: 72px; margin: 10px 0 8px; border-radius: 14px;
+  background: linear-gradient(180deg, rgba(20,40,100,.35), rgba(8,16,44,.45));
+  border: 1px solid rgba(120,160,255,.14);
+}
+
+.vl-captions {
+  max-height: 168px; min-height: 52px; overflow-y: auto; padding: 2px 2px 2px 0;
+  display: flex; flex-direction: column; gap: 6px; scrollbar-width: thin;
+}
+.vl-line { max-width: 92%; padding: 6px 10px; border-radius: 12px; font-size: 13.5px; word-wrap: break-word; overflow-wrap: anywhere; }
+.vl-line.bot  { align-self: flex-start; background: rgba(40,70,160,.45); border: 1px solid rgba(140,180,255,.18); }
+.vl-line.user { align-self: flex-end;   background: rgba(96,165,250,.30); border: 1px solid rgba(160,200,255,.28); }
+.vl-line.sys  { align-self: center; background: transparent; color: #a9bde6; font-size: 12px; text-align: center; padding: 2px 6px; }
+.vl-line.verified::after { content: "  ✓ verified by read-back"; color: #8fe3ff; font-size: 11px; }
+.vl-interim { min-height: 18px; margin: 4px 2px 2px; font-size: 13px; font-style: italic; color: #a8c4ff; }
+
+.vl-form { display: flex; gap: 6px; margin-top: 6px; }
+.vl-input {
+  flex: 1; min-width: 0; padding: 9px 12px; border-radius: 12px; font: inherit; color: #fff;
+  background: rgba(8,16,44,.55); border: 1px solid rgba(140,180,255,.30);
+}
+.vl-input::placeholder { color: #8da6d8; }
+.vl-send {
+  padding: 0 14px; border-radius: 12px; border: 1px solid rgba(160,200,255,.35);
+  background: rgba(59,110,230,.55); font-weight: 600;
+}
+.vl-send:hover { background: rgba(70,125,245,.75); }
+
+.vl-controls { display: flex; gap: 8px; margin-top: 10px; }
+.vl-mic {
+  flex: 1; min-height: 44px; border-radius: 14px; border: 1px solid rgba(160,200,255,.35);
+  background: rgba(59,110,230,.45); font-weight: 600; display: flex; gap: 8px; align-items: center; justify-content: center;
+  transition: background var(--vl-ease);
+}
+.vl-mic svg { width: 18px; height: 18px; }
+.vl-mic[aria-pressed="true"] { background: rgba(59,130,246,.85); box-shadow: 0 0 18px rgba(96,165,250,.55); }
+.vl-mic[disabled] { opacity: .45; cursor: not-allowed; }
+.vl-stop {
+  flex: 1; min-height: 44px; border-radius: 14px; border: 1px solid rgba(255,150,150,.55);
+  background: rgba(220,60,70,.80); color: #fff; font-weight: 800; letter-spacing: 1.2px;
+}
+.vl-stop:hover { background: rgba(236,70,80,.95); }
+
+.vl-note { margin: 10px 2px 0; font-size: 11px; line-height: 1.4; color: #93a9d6; }
+.vl-debug { display: none; gap: 6px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(140,180,255,.3); }
+.vl-root[data-debug="true"] .vl-debug { display: flex; }
+.vl-debug button { padding: 4px 9px; border-radius: 8px; font-size: 12px; background: rgba(60,100,200,.35); border: 1px solid rgba(140,180,255,.3); }
+.vl-debug button[aria-pressed="true"] { background: rgba(96,165,250,.8); }
+.vl-debug span { font-size: 11px; color: #9fb6e8; align-self: center; }
+
+/* ───────────────────────── HIGHLIGHT RINGS (drawn over the page; the page DOM is never modified) ───────────────────────── */
+.vl-layer { position: fixed; inset: 0; z-index: 2147483645; pointer-events: none; }
+.vl-ring {
+  position: fixed; border-radius: 10px; pointer-events: none;
+  border: 3px solid #60a5fa;
+  box-shadow: 0 0 0 4px rgba(96,165,250,.28), 0 0 26px rgba(96,165,250,.85), inset 0 0 14px rgba(96,165,250,.35);
+  animation: vl-ring-pulse 1.1s ease-in-out infinite;
+}
+.vl-ring.vl-ring-in { animation: vl-ring-in .35s ease-out, vl-ring-pulse 1.1s ease-in-out .35s infinite; }
+@keyframes vl-ring-in { from { opacity: 0; transform: scale(1.25); } to { opacity: 1; transform: scale(1); } }
+@keyframes vl-ring-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(96,165,250,.22), 0 0 18px rgba(96,165,250,.65), inset 0 0 10px rgba(96,165,250,.25); }
+  50%      { box-shadow: 0 0 0 8px rgba(96,165,250,.10), 0 0 34px rgba(120,185,255,1),  inset 0 0 18px rgba(120,185,255,.45); }
+}
+.vl-badge {
+  position: absolute; left: -3px; top: -14px; transform: translateY(-50%);
+  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  background: #2563eb; color: #fff; font: 700 12px/22px system-ui, sans-serif; text-align: center;
+  box-shadow: 0 2px 10px rgba(0,0,60,.5);
+}
+
+/* ───────────────────────── MOBILE: bottom sheet ───────────────────────── */
+@media (max-width: 600px) {
+  .vl-panel {
+    left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important;
+    width: 100%; max-width: none; border-radius: 22px 22px 0 0;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    transform: translateY(24px); transform-origin: bottom center;
+  }
+  .vl-panel::after { border-radius: 24px 24px 0 0; }
+  .vl-root[data-open="true"] .vl-orb { display: none; }   /* sheet has its own close button */
+  .vl-iconbtn { width: 44px; height: 44px; }
+  .vl-input { min-height: 44px; font-size: 16px; }       /* 16px stops iOS zoom-on-focus */
+  .vl-send { min-width: 64px; }
+  .vl-captions { max-height: 26vh; }
+}
+
+/* ───────────────────────── REDUCED MOTION ───────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .vl-orb, .vl-orb::before, .vl-orb::after, .vl-panel::after, .vl-ring, .vl-state::before { animation: none !important; }
+  .vl-root[data-state="listening"] .vl-panel::after { opacity: .9; }
+  .vl-root[data-state="listening"] .vl-orb { box-shadow: 0 0 0 4px rgba(96,165,250,.45), 0 0 34px rgba(96,165,250,.8); }
+  .vl-root[data-state="thinking"] .vl-orb  { box-shadow: 0 0 22px rgba(100,140,230,.5); }
+}
