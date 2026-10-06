@@ -1783,7 +1783,7 @@
         onMinimize: function () { self.minimize(); },
         onTurnOff: function () { self.turnOff(); },
         onRestore: function () { self.restore(false); },
-        onBubble: function () { self.touched = true; Voice.unlock(); UI.hideBubble(); self.open(true); },
+        onBubble: function () { self.touched = true; Voice.unlock(); UI.hideBubble(); self.open(false); },   // opens the panel only — the mic starts on an explicit mic/orb tap
         onBubbleDismiss: function () { UI.hideBubble(); },
         onLang: function (c) { Voice.unlock(); self.changeLanguage(c, true); },
         onSubmit: function (v) { Voice.unlock(); self.handleUtterance(v, 'text'); },
@@ -1809,6 +1809,9 @@
       Voice.onBoundary = function () { UI.wave && UI.wave.kick(1); };
 
       // ---- global safety nets + visitor controls ----
+      ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (ev) {   // visitor is already busy on the page → never nudge
+        document.addEventListener(ev, function (e) { if (!self.touched && e.isTrusted) self.touched = true; }, { capture: true, passive: true });
+      });
       document.addEventListener('keydown', function (e) {
         if (self.killed) return;
         if (e.key === 'Escape') { if (self.busy || Voice.isSpeaking() || self._acting) self.stop(true); else if (UI.open) self.close(); }
