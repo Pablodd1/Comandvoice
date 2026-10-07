@@ -56,6 +56,8 @@
       tint: 0.22,                        // 0..0.6 darkness of the glass
       hue: 215,                          // accent hue 0..360 (blue family by default)
       lite: 'auto',                      // 'auto' | true | false  - cheaper rendering on weak devices
+      visual: 'line',                    // 'line' (orb + travelling dash-wave under it) | 'radial' (bars around the orb) | 'both'
+      flow: 'out',                       // line only: 'out' = voice travels from the centre to both ends | 'right' = travels left to right
       passThrough: true                  // clicks/scroll reach the page behind the glass (only the controls capture them)
     },
     // The Companion: what the assistant says first and what it notices. null = plain voice commander.
@@ -1281,17 +1283,23 @@
     this.ripples = []; this.lastRip = 0; this.level = 0; this.lastLevel = 0;
     this.t0 = performance.now(); this.running = false; this.dpr = 1; this.S = 400; this.R = 100;
     this.lite = false; this.hue = 215; this.sleep = false;
+    this.visual = 'line'; this.flow = 'out'; this.W = 400; this.hist = new Float32Array(24); this._lastTick = 0; this._seed = 1;
     this.reduced = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
     this._loop = this._loop.bind(this);
   }
-  RadialRenderer.prototype.configure = function (o) { this.lite = !!o.lite; this.auto = !!o.auto; this.hue = o.hue; this.N = this.lite ? 48 : 72; this.cur = new Float32Array(this.N); };
+  RadialRenderer.prototype.configure = function (o) {
+    this.lite = !!o.lite; this.auto = !!o.auto; this.hue = o.hue; this.N = this.lite ? 48 : 72; this.cur = new Float32Array(this.N);
+    this.visual = (o.visual === 'radial' || o.visual === 'both') ? o.visual : 'line'; this.flow = o.flow === 'right' ? 'right' : 'out';
+    this.LN = this.lite ? 29 : 41; this.hist = new Float32Array(this.flow === 'right' ? this.LN : (this.LN + 1) / 2);
+  };
   RadialRenderer.prototype.resize = function () {
     const vw = document.documentElement.clientWidth || window.innerWidth, vh = window.innerHeight || 700;
     this.R = clamp(Math.round(Math.min(vw * 0.19, vh * (vh < 560 ? 0.10 : 0.13))), 46, 120);
     this.S = Math.round(this.R * 5);
+    this.W = this.visual === 'radial' ? this.S : Math.max(this.S, Math.round(Math.min(vw * 0.88, 720)));
     this.dpr = this.lite ? 1 : Math.min(window.devicePixelRatio || 1, 2);
-    this.canvas.style.width = this.S + 'px'; this.canvas.style.height = this.S + 'px';
-    this.canvas.width = Math.round(this.S * this.dpr); this.canvas.height = Math.round(this.S * this.dpr);
+    this.canvas.style.width = this.W + 'px'; this.canvas.style.height = this.S + 'px';
+    this.canvas.width = Math.round(this.W * this.dpr); this.canvas.height = Math.round(this.S * this.dpr);
     const host = (this.canvas.closest && this.canvas.closest('.vl-g-stage')) || this.canvas.parentNode; if (host && host.style) host.style.setProperty('--vl-R', this.R + 'px');
   };
   RadialRenderer.prototype.start = function () { if (this.running) return; this.running = true; this.resize(); requestAnimationFrame(this._loop); };
@@ -1314,6 +1322,48 @@
     }
     return 0.03 + 0.03 * (0.5 + 0.5 * Math.sin(t * 1.3 + i * 0.55)) * k;       // idle / sleep
   };
+  /** one 0..1 loudness sample for the line: real analyser data when we have it, otherwise a speech-shaped simulation (browser voices can't be measured) */
+  RadialRenderer.prototype._amp = function (state, t, w) {
+    const mean = function (a, frac) { const u = Math.max(1, Math.floor(a.length * frac)); let s = 0; for (let k = 0; k < u; k++) s += a[k]; return s / u / 255; };
+    const k = this.reduced ? 0.4 : 1;
+    const wobble = 0.6 + 0.8 * Math.random();
+    if (state === 'speaking') {
+      if (w && w.outAnalyser && w.outFreq) return clamp(Math.pow(mean(w.outFreq, 0.5), 0.9) * 2.1, 0, 1) * (0.75 + 0.5 * Math.random());
+      const syl = Math.max(0, Math.sin(t * 11.5) * 0.5 + Math.sin(t * 7.3 + 1.1) * 0.5), gap = 0.5 + 0.5 * Math.sin(t * 1.7) * Math.sin(t * 0.63 + 1.3);
+      return clamp((0.12 + 0.78 * syl * (0.35 + 0.65 * gap)) * (0.55 + 0.45 * (w ? w.pulse : 0)) * wobble, 0, 1) * k;
+    }
+    if (state === 'listening') {
+      if (w && w.analyser && w.freq) return clamp(Math.pow(mean(w.freq, 0.5), 1.1) * 2.3, 0, 1) * (0.8 + 0.4 * Math.random());
+      return clamp(0.04 + 0.2 * (0.5 + 0.5 * Math.sin(t * 2.2)) * wobble, 0, 1) * k;
+    }
+    if (state === 'thinking') return 0.06 + 0.08 * (0.5 + 0.5 * Math.sin(t * 4.2));
+    return 0;
+  };
+  /** advance the travelling wave: a new sample enters at the centre (or the left edge) and everything older moves outward */
+  RadialRenderer.prototype._tick = function (now, a) {
+    const step = this.reduced ? 110 : 52;
+    if (now - this._lastTick < step) return;
+    this._lastTick = now;
+    const h = this.hist;
+    for (let k = h.length - 1; k > 0; k--) h[k] = h[k - 1] * 0.985;
+    h[0] = a;
+  };
+  RadialRenderer.prototype._drawLine = function (state, col, glow, cx, y, R, t) {
+    const ctx = this.ctx, N = this.LN, c = (N - 1) / 2, wl = this.W * 0.9, stepX = wl / (N - 1), pw = Math.max(3, stepX * 0.6);
+    const hb = Math.max(3, R * 0.04), H = R * 0.9, h = this.hist, out = this.flow === 'out';
+    if (!this.lite) { ctx.shadowColor = col(glow * 0.9, 0); ctx.shadowBlur = state === 'idle' ? 4 : 12; }
+    for (let i = 0; i < N; i++) {
+      const k = out ? Math.abs(i - c) : i, v = clamp(h[Math.min(k, h.length - 1)] || 0, 0, 1);
+      const x = cx - wl / 2 + i * stepX, edge = Math.abs(i - c) / c;                 // 0 centre … 1 end
+      const idle = this.reduced ? 1 : 0.8 + 0.2 * Math.sin(t * 1.4 + i * 0.7), hh = hb + v * H * (1 - 0.35 * edge), a = clamp((0.30 + 0.70 * (1 - Math.pow(edge, 1.7))) * (0.55 + 0.45 * Math.min(1, v * 3 + 0.35)) * (v < 0.05 ? idle : 1), 0.12, 1);
+      ctx.fillStyle = col(Math.min(1, a + 0.2), -26 + 12 * edge); ctx.strokeStyle = 'rgba(255,255,255,' + (0.7 * a).toFixed(2) + ')'; ctx.lineWidth = 1;
+      const rx = x - pw / 2, ry = y - hh / 2, rr = Math.min(pw, hh) / 2;
+      ctx.beginPath(); ctx.moveTo(rx + rr, ry); ctx.lineTo(rx + pw - rr, ry); ctx.arc(rx + pw - rr, ry + rr, rr, -Math.PI / 2, 0); ctx.lineTo(rx + pw, ry + hh - rr);
+      ctx.arc(rx + pw - rr, ry + hh - rr, rr, 0, Math.PI / 2); ctx.lineTo(rx + rr, ry + hh); ctx.arc(rx + rr, ry + hh - rr, rr, Math.PI / 2, Math.PI); ctx.lineTo(rx, ry + rr);
+      ctx.arc(rx + rr, ry + rr, rr, Math.PI, Math.PI * 1.5); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+  };
   RadialRenderer.prototype._loop = function (now) {
     if (!this.running) return;
     requestAnimationFrame(this._loop);
@@ -1323,7 +1373,7 @@
       if (dt < 500) { this._acc = (this._acc || 0) + dt; this._n = (this._n || 0) + 1; if (this._n >= 120) { if (this.auto && !this.lite && this._acc / this._n > 42 && this.onSlow) this.onSlow(); this._acc = 0; this._n = 0; } }
     }
     this._lt = now;
-    const w = UI.wave, state = this.sleep ? 'idle' : (w ? w.state : 'idle'), t = (now - this.t0) / 1000, N = this.N, R = this.R, S = this.S, dpr = this.dpr, ctx = this.ctx;
+    const w = UI.wave, state = this.sleep ? 'idle' : (w ? w.state : 'idle'), t = (now - this.t0) / 1000, N = this.N, R = this.R, S = this.S, W = this.W, dpr = this.dpr, ctx = this.ctx;
     if (w) {                                              // the panel renderer isn't running in glass mode, so we feed its buffers
       if (w.analyser && w.freq && state === 'listening') w.analyser.getByteFrequencyData(w.freq);
       if (w.outAnalyser && w.outFreq && state === 'speaking') w.outAnalyser.getByteFrequencyData(w.outFreq);
@@ -1337,12 +1387,12 @@
     const H = this.hue; let h = H, s = 88, l = 62, glow = 0.8;
     if (state === 'speaking') { h = H - 22; l = 70; glow = 0.95; } else if (state === 'listening') { h = H + 2; l = 64; glow = 0.95; } else if (state === 'thinking') { h = H + 8; s = 45; l = 62; glow = 0.55; } else { s = 72; l = 52; glow = 0.45; }
     const col = function (a, dl) { return 'hsla(' + h + ',' + s + '%,' + clamp(l + (dl || 0), 5, 95) + '%,' + a + ')'; };
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, S, S);
-    const cx = S / 2, cy = S / 2, breathe = 1 + (this.reduced ? 0 : 0.035 * Math.sin(t * 1.3)) + this.level * 0.16, r = R * breathe;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, S);
+    const cx = W / 2, cy = S / 2, breathe = 1 + (this.reduced ? 0 : 0.035 * Math.sin(t * 1.3)) + this.level * 0.16, r = R * breathe;
     // ripples leave the circle with the voice (or gently, as a "tap me" cue while asleep)
     if (!this.reduced) {
       const gap = this.sleep ? 2600 : (320 - this.level * 220);
-      if ((this.sleep || ((state === 'listening' || state === 'speaking') && this.level > 0.13)) && now - this.lastRip > gap) { this.ripples.push({ b: now, a: this.sleep ? 0.5 : clamp(this.level * 1.6, 0.25, 0.9) }); this.lastRip = now; if (this.ripples.length > 7) this.ripples.shift(); }
+      if ((this.sleep || (this.visual !== 'line' && (state === 'listening' || state === 'speaking') && this.level > 0.13)) && now - this.lastRip > gap) { this.ripples.push({ b: now, a: this.sleep ? 0.5 : clamp(this.level * 1.6, 0.25, 0.9) }); this.lastRip = now; if (this.ripples.length > 7) this.ripples.shift(); }
     }
     const life = this.sleep ? 3200 : 1900;
     this.ripples = this.ripples.filter(function (p) { return now - p.b < life; });
@@ -1359,6 +1409,9 @@
     ctx.shadowBlur = 0;
     ctx.strokeStyle = col(0.7, 14); ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832); ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r - 3, Math.PI * 1.1, Math.PI * 1.65); ctx.stroke();   // glass highlight
+    // the travelling line (default visual)
+    if (this.visual !== 'radial') { this._tick(now, this.sleep ? 0 : this._amp(state, t, w)); this._drawLine(this.sleep ? 'idle' : state, col, glow, cx, cy + R * 1.72, R, t); }
+    if (this.visual === 'line') return;
     // radial bars
     const r0 = r * 1.1, maxL = R * 0.72, bw = Math.max(2, (6.2832 * r0 / N) * 0.52);
     ctx.lineCap = 'round'; ctx.lineWidth = bw;
@@ -2117,7 +2170,7 @@
     },
     setLite: function (on, initial) {
       this.root.setAttribute('data-lite', on ? 'true' : 'false');
-      if (this.radial) { this.radial.configure({ lite: on, auto: CONFIG.glass.lite === 'auto', hue: CONFIG.glass.hue }); this.radial.resize(); }
+      if (this.radial) { this.radial.configure({ lite: on, auto: CONFIG.glass.lite === 'auto', hue: CONFIG.glass.hue, visual: CONFIG.glass.visual, flow: CONFIG.glass.flow }); this.radial.resize(); }
       if (!initial) log('glass: switched to lite rendering');
     },
     /** awake = the visitor tapped the circle (the assistant may speak and the mic may be used). asleep = "tap to start". */

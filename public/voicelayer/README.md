@@ -57,7 +57,8 @@ a glowing circle sits in the middle, and radial waves around it move with **your
 <script>
   window.VoiceLayerConfig = {
     mode: 'glass',
-    glass: { blur: 14, tint: 0.22, hue: 215, lite: 'auto', passThrough: true },
+    glass: { blur: 14, tint: 0.22, hue: 215, lite: 'auto', passThrough: true,
+             visual: 'line', flow: 'out' },
     companion: { preset: 'training', name: 'Alex', demo: true }   // demo:true = fake data, announced as DEMO
   };
 </script>
@@ -68,6 +69,7 @@ Visitor experience: the glass is up, the circle breathes, **"Tap to start"**. On
 (greeting, then its question or what it noticed), then the mic opens. Browsers do not allow audio or the mic before
 a tap, so that single tap is the only gate and it is deliberate: asleep means no mic and no voice.
 
+- **The visual**: a glass orb with a row of rounded dashes under it (`visual: 'line'`, the default). Asleep, the dashes sit flat and breathe. When the greeting starts, the dashes grow at the centre and the wave travels outward to both ends as the words are spoken; the same line moves with the visitor's voice while listening. `flow: 'right'` makes it travel left to right instead. `visual: 'radial'` (bars around the orb) and `'both'` are still available.
 - **Page stays usable**: clicks, scroll and keys reach the page behind the glass (`passThrough`). Only the circle and controls capture input.
 - **Voice controls everything**: "next", "skip", "why", "repeat", "yes/no", "mute/unmute", "pause" (back to tap-to-start), "minimize", "turn off", "English/Español", plus every page command from section 2.
 - **Always visible controls**: pause, mute, minimize, turn off, typed input. Esc closes.
@@ -190,7 +192,7 @@ Otherwise the assistant says it could not confirm, never "done".
 - No form filling and no multi-step flows by design in Phase 0.
 - Grammar is rule-based: it understands the command shapes above, not free conversation. Fuzzy matching tolerates small mis-hearings.
 - Page names and button labels are matched in the page's own language; saying a Spanish command on an English page works only when the words are similar.
-- Browser TTS can't be measured by the page, so the speaking waveform is simulated with browser voices.
+- Browser TTS can't be measured by the page, so with browser voices the line is a speech-shaped simulation (it starts and stops with the audio and kicks on word boundaries). With Deepgram voice the line follows the real audio level.
 - Glass: `backdrop-filter` is GPU work. `lite:'auto'` reacts to slow frames, but it is only measured on this sandbox, not on low-end phones.
 - Speak-first needs one tap (browser rule). It cannot be removed.
 - Companion insights are only as good as the signals you feed it; demo data is fake by design.

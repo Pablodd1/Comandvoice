@@ -10,7 +10,7 @@ Playwright (Chromium) against the running app, with **mocks** for: microphone (`
 | Suite | File | Scope |
 |---|---|---|
 | T1-T27 | `run.mjs` | core widget: scan, commands, receipts, EN/ES, minimize / turn off / bring back, bubble, kill switch, Deepgram mock |
-| T28-T37 | `glass.mjs` | glass layer, wake tap, companion flow, other intents, guardrails, controls, phone, kill switch / file://, Deepgram mock |
+| T28-T38 | `glass.mjs` | travelling voice line, glass layer, wake tap, companion flow, other intents, guardrails, controls, phone, kill switch / file://, Deepgram mock |
 
 Run: `cd /home/user/vl_test && node run.mjs && node glass.mjs` with the app on `http://localhost:3000`.
 The harness files live outside the web root (`/home/user/vl_test`), not in `public/`.
