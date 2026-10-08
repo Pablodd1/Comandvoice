@@ -37,4 +37,4 @@ The harness files live outside the web root (`/home/user/vl_test`), not in `publ
 - Real user data: all companion tests use demo data
 
 ## v0.4 additions
-T39 voice preference (server defaults and env override against real wrangler instances, browser voice ranking, Deepgram request voice). T40 forms. T41 memory. T42 knowledge. T43 integration. Result: glass.mjs 277/277; run.mjs 304/305 (T25 "dismiss hides it" is a known flaky check).
+T39 voice preference (server defaults and env override against real wrangler instances, browser voice ranking, Deepgram request voice). T40 forms. T41 memory. T42 knowledge. T43 integration. Result: glass.mjs 277/277; run.mjs 305/305 (the T25 dismiss check raced the 300 ms CSS fade-out; the test now waits it out).
