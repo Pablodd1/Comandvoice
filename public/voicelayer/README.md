@@ -202,3 +202,18 @@ Otherwise the assistant says it could not confirm, never "done".
 
 `voicelayer.js` · `voicelayer.css` · `demo.html` (EN store) · `demo-es.html` (ES store) · `demo-glass.html` (glass + companion) · `embed-snippet.html` · `SELF-TEST.md`
 Demo URLs when the project runs: `/voicelayer/demo`, `/voicelayer/demo-es`, `/voicelayer/demo-glass`.
+
+## 10. Skills (v0.4, all opt-in, default off)
+
+| Option | What it does |
+|---|---|
+| `forms: true` | "change my phone to 305 555 0199": finds the field, reads it back, asks yes/no, fills, then re-reads the DOM to verify. Refuses password/payment/ID fields (value redacted in transcript and events). Never submits by itself. "undo that" restores. |
+| `memory: true` or `{ttlDays:180, maxPages:8, maxFacts:10, pages:true, skipPaths:[]}` | Consent-gated, device-local (localStorage). "remember me", "my name is...", "what do you remember", "stop remembering", "forget me". Welcome-back on a later visit. Refuses health/payment notes. No server storage. |
+| `knowledge: true` or `{pages:[], facts:[{q,a,source,url,keywords}], minScore:0.55}` | Answers from the site's own text (this page, listed pages, owner facts) and names the source. No match: says so, never guesses. Medical-advice questions go to a professional. Keyword matching, not an LLM. |
+| `voiceGender: 'female'` (default) / `'male'` / `'any'`, `voiceName` | Browser-voice preference. Gender is a voice-name heuristic (browsers do not publish it). |
+
+Server voices: defaults `aura-2-athena-en` and `aura-2-selena-es`. Override with env `VOICELAYER_VOICE_EN` / `VOICELAYER_VOICE_ES` (must match `aura-2-<name>-en|es`, otherwise ignored).
+
+Events: `voicelayer:memory`, `voicelayer:knowledge`. Demo pages: `demo-account.html`, `demo-account-policies.html`.
+
+Honest limits: the female voice is not audibly verified without a Deepgram key. Knowledge is keyword retrieval. Memory is per device. Forms handle text, email, tel, textarea and select only (not date, checkbox, radio, file).

@@ -17,6 +17,8 @@ type Bindings = {
   VOICELAYER_ENABLED?: string          // "false" = owner kill switch: every widget on every site turns itself off
   VOICELAYER_ALLOWED_ORIGINS?: string  // comma-separated extra origins allowed to call these routes (same-origin is always allowed)
   VOICELAYER_ALLOW_ANY_ORIGIN?: string // "true" only for local testing
+  VOICELAYER_VOICE_EN?: string         // optional Aura-2 voice override, e.g. aura-2-harmonia-en (validated, must end in -en)
+  VOICELAYER_VOICE_ES?: string         // optional Aura-2 voice override, e.g. aura-2-carina-es (validated, must end in -es)
 }
 
 declare const WebSocketPair: any
@@ -26,8 +28,15 @@ const app = new Hono<{ Bindings: Bindings }>()
 const DG = 'https://api.deepgram.com'
 const MAX_TTS_CHARS = 700
 const MAX_LISTEN_MS = 10 * 60 * 1000
-const VOICES: Record<string, string> = { en: 'aura-2-thalia-en', es: 'aura-2-celeste-es' }
+// Default: a calm, professional FEMALE voice per language (per Deepgram's voice catalogue: athena = "Calm, Smooth, Professional";
+// selena = Latin-American Spanish, "Calm, Friendly, Informative"). Override per deployment with VOICELAYER_VOICE_EN / _ES.
+const DEFAULT_VOICES: Record<string, string> = { en: 'aura-2-athena-en', es: 'aura-2-selena-es' }
 const VOICE_RE = /^aura-2-[a-z]+-(en|es)$/
+function voicesFor(env: Bindings | undefined): Record<string, string> {
+  const e = env || ({} as Bindings)
+  const pick = (v: string | undefined, lang: string) => (v && VOICE_RE.test(v.trim()) && v.trim().endsWith('-' + lang) ? v.trim() : DEFAULT_VOICES[lang])
+  return { en: pick(e.VOICELAYER_VOICE_EN, 'en'), es: pick(e.VOICELAYER_VOICE_ES, 'es') }
+}
 const LISTEN_PARAMS = new Set([
   'model', 'language', 'interim_results', 'smart_format', 'punctuate', 'endpointing', 'utterance_end_ms',
   'vad_events', 'encoding', 'sample_rate', 'channels', 'keyterm'
@@ -89,7 +98,7 @@ app.get('/api/voice/config', (c) => {
     enabled: enabled(c),
     deepgram: enabled(c) && hasKey(c),
     stt: 'deepgram-nova-3', tts: 'deepgram-aura-2', languages: ['en', 'es'],
-    voices: VOICES
+    voices: voicesFor(c.env)
   })
 })
 
@@ -122,7 +131,7 @@ app.post('/api/voice/speak', async (c) => {
   if (!text) return c.json({ error: 'empty' }, 400)
   if (text.length > MAX_TTS_CHARS) return c.json({ error: 'too_long', max: MAX_TTS_CHARS }, 413)
   const lang = body.lang === 'es' ? 'es' : 'en'
-  const voice = body.voice && VOICE_RE.test(body.voice) && body.voice.endsWith('-' + lang) ? body.voice : VOICES[lang]
+  const voice = body.voice && VOICE_RE.test(body.voice) && body.voice.endsWith('-' + lang) ? body.voice : voicesFor(c.env)[lang]
   const r = await fetch(`${DG}/v1/speak?model=${voice}&encoding=mp3`, {
     method: 'POST',
     headers: { Authorization: `Token ${c.env.DEEPGRAM_API_KEY}`, 'content-type': 'application/json' },

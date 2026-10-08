@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Northside Care Portal – My account</title>
+  <meta name="description" content="Demo patient portal: update your contact details, read the clinic FAQ and policies. Demo content only; not a real clinic.">
+  <style>
+    :root { --ink:#14213d; --mute:#5b6577; --line:#e3e7ef; --brand:#1f6feb; --bg:#f5f8fc; }
+    * { box-sizing:border-box; }
+    body { margin:0; font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+    header.site { position:sticky; top:0; z-index:20; background:#fff; border-bottom:1px solid var(--line); }
+    header.site .bar { max-width:980px; margin:0 auto; padding:12px 20px; display:flex; gap:24px; align-items:center; flex-wrap:wrap; }
+    .logo { font-weight:800; color:var(--brand); text-decoration:none; font-size:19px; }
+    nav { display:flex; gap:18px; flex-wrap:wrap; } nav a { color:var(--ink); text-decoration:none; font-weight:500; }
+    main { max-width:980px; margin:0 auto; padding:0 20px 80px; }
+    section { padding:28px 0; scroll-margin-top:84px; }
+    h1 { font-size:34px; margin:36px 0 8px; } h2 { font-size:24px; margin:0 0 14px; } h3 { margin:18px 0 6px; font-size:18px; }
+    .panel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px; }
+    .notice { background:#fff7e0; border:1px solid #f1d98a; border-radius:10px; padding:10px 14px; font-size:14px; }
+    form .row { display:grid; grid-template-columns:200px 1fr; gap:10px; align-items:center; margin:10px 0; }
+    @media (max-width:640px){ form .row { grid-template-columns:1fr; } }
+    label { font-weight:600; font-size:15px; }
+    input, select, textarea { font:inherit; padding:9px 11px; border:1px solid #c5ccdb; border-radius:9px; width:100%; background:#fff; }
+    .btn { border:0; border-radius:10px; padding:10px 18px; background:var(--brand); color:#fff; font:600 15px system-ui; cursor:pointer; }
+    .btn.alt { background:#fff; color:var(--brand); border:1px solid var(--brand); }
+    details { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin-bottom:10px; } summary { cursor:pointer; font-weight:600; }
+    #save-log { font:12px/1.5 ui-monospace,Menlo,monospace; background:#0f172a; color:#9fe1b4; border-radius:10px; padding:10px 12px; min-height:48px; white-space:pre-wrap; margin-top:12px; }
+    footer { background:#0f172a; color:#cbd5e1; padding:28px 20px 90px; } footer a { color:#9db8ff; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <div class="bar">
+      <a class="logo" href="#top">Northside Care Portal</a>
+      <nav aria-label="Main">
+        <a href="#profile">My profile</a>
+        <a href="#faq">FAQ</a>
+        <a href="#policies">Policies</a>
+        <a href="demo-account-policies.html">Billing and records</a>
+        <a href="#contact">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <h1>My account</h1>
+    <p class="notice" role="note">Demo portal for testing VoiceLayer. All text on this page is made-up sample content, not medical or legal advice.</p>
+
+    <section id="profile">
+      <h2>My profile</h2>
+      <form id="profile-form" class="panel" autocomplete="on">
+        <div class="row"><label for="fullName">Full name</label><input id="fullName" name="fullName" type="text" value="Maria Lopez" autocomplete="name"></div>
+        <div class="row"><label for="phone">Phone number</label><input id="phone" name="phone" type="tel" value="305 555 0100" autocomplete="tel"></div>
+        <div class="row"><label for="email">Email address</label><input id="email" name="email" type="email" value="maria@example.com" autocomplete="email"></div>
+        <div class="row"><label for="address">Street address</label><input id="address" name="address" type="text" value="12 Palm Street" autocomplete="street-address"></div>
+        <div class="row"><label for="contactPref">Preferred contact</label>
+          <select id="contactPref" name="contactPref"><option value="phone">Phone call</option><option value="email">Email</option><option value="text">Text message</option></select></div>
+        <div class="row"><label for="notes">Notes for the front desk</label><textarea id="notes" name="notes" rows="2" maxlength="120"></textarea></div>
+        <div class="row"><label for="member">Member ID</label><input id="member" name="member" type="text" value="NS-4471" readonly></div>
+        <div class="row"><span></span><div><button class="btn" type="submit" id="save-btn">Save changes</button> <button class="btn alt" type="reset">Reset</button></div></div>
+        <div id="save-log" aria-live="polite">Nothing submitted yet.</div>
+      </form>
+      <h3>Security and payment</h3>
+      <form id="secure-form" class="panel" autocomplete="off">
+        <div class="row"><label for="pw">Password</label><input id="pw" name="password" type="password" autocomplete="new-password" value="old-secret"></div>
+        <div class="row"><label for="cardNumber">Card number</label><input id="cardNumber" name="cardNumber" type="text" inputmode="numeric" autocomplete="cc-number" value=""></div>
+        <div class="row"><label for="ssn">Social security number</label><input id="ssn" name="ssn" type="text" value=""></div>
+        <div class="row"><span></span><div><button class="btn alt" type="submit" id="pay-btn">Update payment</button></div></div>
+      </form>
+    </section>
+
+    <section id="faq">
+      <h2>Frequently asked questions</h2>
+      <details id="faq-hours"><summary>What are your opening hours?</summary>
+        <p>The front desk is open Monday to Friday from 8:00 am to 6:00 pm, and Saturday from 9:00 am to 1:00 pm. We are closed on Sundays and public holidays.</p></details>
+      <details id="faq-resched"><summary>How do I reschedule an appointment?</summary>
+        <p>You can reschedule up to 24 hours before your visit by calling the front desk or using the appointments page. Changes made inside 24 hours may be charged a late fee. Please bring your member ID to every visit.</p></details>
+      <details id="faq-parking"><summary>Is there parking at the clinic?</summary>
+        <p>Yes. Free parking is available behind the building, with accessible spaces next to the side entrance. Street parking is limited.</p></details>
+      <details id="faq-records"><summary>How can I get a copy of my records?</summary>
+        <p>Request your records from the account page or at the front desk. Copies are usually ready within five business days. We need a signed release form before sending records to another provider.</p></details>
+    </section>
+
+    <section id="policies">
+      <h2>Policies</h2>
+      <h3 id="p-cancel">Cancellation policy</h3>
+      <p>Cancel at least 24 hours before your appointment to avoid a late cancellation fee of $25. Emergencies are reviewed case by case. Repeated no-shows may affect your ability to book online.</p>
+      <h3 id="p-privacy">Privacy policy</h3>
+      <p>We share your information only with your care team and as required by law. You can ask us for a list of who has accessed your record. This assistant does not store health information.</p>
+      <h3 id="p-med">Medication notes (sample)</h3>
+      <p>Sample text for testing: ibuprofen 200 mg tablets, take one tablet every six hours with food. Do not exceed the dose on the label. This is placeholder text, not advice.</p>
+    </section>
+
+    <section id="contact">
+      <h2>Contact</h2>
+      <div class="panel"><p>Front desk: <a href="tel:+13055550123">305 555 0123</a>. Email: <a href="mailto:frontdesk@example.com">frontdesk@example.com</a>. 12 Palm Street, Miami.</p></div>
+    </section>
+  </main>
+
+  <footer><div>Northside Care Portal demo · <a href="demo-glass.html">other demo</a></div></footer>
+
+  <script>
+    document.getElementById('secure-form').addEventListener('submit', function (e) { e.preventDefault(); window.__secureSubmits = (window.__secureSubmits || 0) + 1; });
+    document.getElementById('profile-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = new FormData(e.target), keys = ['fullName', 'phone', 'email', 'address', 'contactPref', 'notes'];
+      window.__submits = (window.__submits || 0) + 1;
+      document.getElementById('save-log').textContent = 'SUBMITTED #' + window.__submits + ': ' + keys.map(function (k) { return k + '=' + f.get(k); }).join(' | ');
+    });
+  </script>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      window.VoiceLayerConfig = {
+        mode: q.get('mode') || 'glass', language: q.get('lang') || 'auto', apiBase: '/api/voice', debug: q.get('debug') === '1', bubble: false,
+        forms: true, memory: true,
+        knowledge: { pages: ['/voicelayer/demo-account-policies.html'], facts: [
+          { q: 'Do you offer telehealth video visits?', a: 'Yes. Video visits are available for follow-ups; ask the front desk to switch your appointment to video.', source: 'the clinic notes', keywords: 'telehealth video virtual online visit' },
+          { q: { en: 'Do you accept walk-ins?', es: '¿Aceptan pacientes sin cita?' }, a: { en: 'Walk-ins are seen when a doctor is free, but booked appointments are served first.', es: 'Atendemos sin cita cuando hay un médico libre, pero primero se atiende a quien tiene cita.' },
+            source: { en: 'the clinic notes', es: 'las notas de la clínica' }, keywords: 'walk in walkin sin cita pacientes' }
+        ] }
+      };
+    })();
+  </script>
+  <script src="voicelayer.js" defer></script>
+</body>
+</html>

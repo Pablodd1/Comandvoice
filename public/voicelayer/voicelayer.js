@@ -73,6 +73,12 @@
     speechRate: 1,                       // 0.5 – 2   (browser voice only)
     speechPitch: 1,                      // 0 – 2     (browser voice only)
     voiceName: '',                       // exact name of a preferred browser voice, or '' for automatic
+    voiceGender: 'female',               // 'female' | 'male' | 'any' - which browser voice to prefer when several exist (the Deepgram voice is chosen on the SERVER: see VOICELAYER_VOICE_EN / _ES)
+
+    // ---- SKILLS (all OFF by default - the site owner opts in; each can be `true` or an options object) ----------------
+    forms: false,                        // change a form field by voice: find field -> read back -> yes/no -> fill -> verify. Never password / payment fields, never submits.
+    memory: false,                       // remember the visitor on THIS device, only after they say yes. { ttlDays: 180, maxPages: 8, maxFacts: 10 }
+    knowledge: false,                    // answer questions from the site's own text, with the source. { pages: ['/faq'], autoNav: false, facts: [{ q, a, source }], minScore: .55 }
 
     // ---- visitor control / owner control -----------------------------------------------------------------------
     allowMinimize: true,                 // show the minimize button (orb folds into a small edge tab)
@@ -138,7 +144,7 @@
   // opened from disk (file://) a relative API path can't work: use browser voice, make no network calls
   if (location.protocol === 'file:' && !/^https?:/i.test(CONFIG.apiBase)) CONFIG.apiBase = '';
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.4.0';
   const STATES = ['idle', 'listening', 'thinking', 'speaking'];
   const log = function () { if (CONFIG.debug) console.log.apply(console, ['[VoiceLayer]'].concat([].slice.call(arguments))); };
 
@@ -155,7 +161,7 @@
     sset: function (k, v) { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch (e) {} }
   };
   const KEYS = { pos: 'voicelayer.orb', speak: 'voicelayer.speak', resume: 'voicelayer.resume', lang: 'voicelayer.lang',
-    off: 'voicelayer.off', min: 'voicelayer.min', bubble: 'voicelayer.bubble', gdismiss: 'voicelayer.gdismiss', cdismissed: 'voicelayer.cdismissed', cdone: 'voicelayer.cdone' };
+    off: 'voicelayer.off', min: 'voicelayer.min', bubble: 'voicelayer.bubble', gdismiss: 'voicelayer.gdismiss', cdismissed: 'voicelayer.cdismissed', cdone: 'voicelayer.cdone', mem: 'voicelayer.memory', memVisit: 'voicelayer.memvisit' };
 
 
   /** (rest of utils) */
@@ -647,6 +653,209 @@
     ackMute: 'Voz silenciada. Seguiré mostrando subtítulos.', ackUnmute: 'La voz está de nuevo activa.', ackSleep: 'Pausando. Toca el círculo cuando me quieras.'
   });
 
+
+  /* ---- skills strings (forms / memory / knowledge) ---- */
+  PACKS.en.sk = {
+    f: {
+      noFields: 'I don’t see any form fields on this page.',
+      noField: function (q, list) { return 'I couldn’t find a field called “' + q + '” on this page.' + (list ? ' I can see: ' + list + '.' : ''); },
+      which: function (n, q) { return 'I found ' + n + ' fields that could be “' + q + '”:'; },
+      blocked: function (l) { return 'I won’t fill “' + l + '” by voice. It looks like a password, payment or other sensitive field. Please type it yourself.'; },
+      readonly: function (l) { return '“' + l + '” is read-only or disabled, so I can’t change it.'; },
+      unsupported: function (l, k) { return '“' + l + '” is a ' + k + ' control. I can’t set that one by voice, please use it yourself.'; },
+      invalid: function (l, why) { return 'That doesn’t look like a valid ' + why + ' for “' + l + '”, so I changed nothing. Please say it again.'; },
+      confirm: function (l, v) { return 'I’ll change ' + l + ' to ' + v + '. Is that right? Say yes or no.'; },
+      what: 'that change',
+      doing: function (l) { return 'Changing ' + l + '.'; },
+      done: function (l, v) { return 'Done. ' + l + ' now shows ' + v + '. I haven’t submitted the form — say “click save” or tap the button when you’re ready.'; },
+      mismatch: function (l, v) { return 'I entered it, but ' + l + ' now shows “' + v + '”, so I can’t confirm the change. Please check the field.'; },
+      gone: function (l) { return 'The ' + l + ' field isn’t available any more, so I changed nothing.'; },
+      stopped: 'Okay, I stopped before changing anything.',
+      undoNone: 'There’s nothing to undo.',
+      undone: function (l) { return 'Undone. ' + l + ' is back to what it was.'; },
+      undoFail: function (l) { return 'I tried to put ' + l + ' back, but I can’t confirm it. Please check the field.'; },
+      why: { phone: 'phone number', email: 'email address', number: 'number', url: 'web address', option: 'choice', length: 'value (it’s too long)', pattern: 'value', range: 'number in the allowed range' },
+      kinds: { date: 'date or time', checkbox: 'checkbox', radio: 'radio button', file: 'file', range: 'slider', color: 'colour', other: 'special' }
+    },
+    m: {
+      off: 'I don’t keep anything about visitors on this site, so there’s nothing to remember or forget.',
+      hint: 'If you’d like, I can remember your name on this device. Just say “remember me”.',
+      consentAsk: 'I can remember your name, the pages you visit and notes you ask me to keep. It stays on this device only, never health or payment details, and you can say “forget me” any time. Want me to? Say yes or no.',
+      consentAskName: function (n) { return 'Nice to meet you, ' + n + '. Want me to remember that on this device? It stays here, never health or payment details, and you can say “forget me” any time. Yes or no?'; },
+      consentAskFact: 'I can keep that note on this device only, never health or payment details, and you can say “forget me” any time. Want me to? Say yes or no.',
+      consentOk: 'Okay. I’ll remember on this device only. Say “what do you remember” to see it, or “forget me” to delete it.',
+      alreadyOn: 'I’m already remembering on this device. Say “what do you remember” to see it, or “forget me” to delete it.',
+      resumed: 'Okay, I’m remembering again.',
+      savedName: function (n) { return 'Got it, ' + n + '. I’ll remember that.'; },
+      sessionName: function (n) { return 'Okay, ' + n + '. I’ll use that name for this visit only.'; },
+      badName: 'I didn’t catch a name there. Try “my name is” and your first name.',
+      savedFact: 'Noted. I’ll keep that on this device.',
+      refuse: 'I don’t store health, payment or password details. Your provider’s own system is the right place for those.',
+      recallNone: 'I don’t have anything saved about you on this device.',
+      recall: function (parts) { return 'Here’s what I have on this device: ' + parts + '. I never store health or payment details. Say “forget me” to delete it all.'; },
+      rName: function (n) { return 'your name, ' + n; },
+      rVisits: function (n) { return 'you’ve visited ' + n + (n === 1 ? ' time' : ' times'); },
+      rPages: function (l) { return 'recent pages: ' + l; },
+      rNotes: function (l) { return (l.length === 1 ? 'one note: ' : l.length + ' notes: ') + l.map(function (x) { return '“' + x + '”'; }).join(', '); },
+      paused: 'Okay. I’ll stop adding to it. What I already saved stays until you say “forget me”.',
+      forgetAsk: 'Delete everything I remember about you on this device? Say yes or no.',
+      forgetNameAsk: 'Delete your name from what I remember? Say yes or no.',
+      forgot: 'Done. I deleted it, and I checked: nothing is stored on this device any more.',
+      forgotName: 'Done. I deleted your name, and I checked that it’s gone.',
+      forgotFail: 'I tried to delete it, but I can’t confirm that it’s gone. You can clear this site’s data in your browser settings.',
+      nothing: 'There’s nothing saved, so there’s nothing to forget.',
+      welcome: function (n, last) { return 'Welcome back' + (n ? ', ' + n : '') + '.' + (last ? ' Last time you were looking at “' + last + '”.' : ''); },
+      that: 'that',
+      noStore: 'This browser won’t let me save anything on this device, so I can’t remember you. I’ll use your name for this visit only.',
+      lastTime: function (last) { return 'Last time you were looking at “' + last + '”.'; }
+    },
+    k: {
+      from: function (s) { return 'That’s from ' + s + '.'; },
+      goAsk: 'Want me to take you there so you can read the rest? Say yes or no.',
+      medText: function (s) { return 'The section ' + s + ' has medical details. I won’t read dosing or treatment information aloud, because it depends on your situation. Please check it with your provider.'; },
+      none: 'I couldn’t find that in this site’s pages, and I don’t want to guess.',
+      noneSuggest: function (l) { return ' Maybe “' + l + '” helps. Want me to take you there? Say yes or no.'; },
+      noneTip: ' You could try asking another way, or contact the site’s team.',
+      medical: 'I can’t give medical advice or tell you what to take. Please ask your doctor, pharmacist or care team.',
+      medicalGo: function (l) { return ' I can take you to “' + l + '”. Say yes or no.'; },
+      that: 'that'
+    },
+    help: { forms: ' To change a field, say “change my phone to” and the new number.', memory: ' Say “remember me” and I’ll remember your name on this device.', knowledge: ' You can ask about this site, like “what’s the return policy?”.' }
+  };
+  PACKS.es.sk = {
+    f: {
+      noFields: 'No veo ningún campo de formulario en esta página.',
+      noField: function (q, list) { return 'No encontré un campo llamado “' + q + '” en esta página.' + (list ? ' Veo: ' + list + '.' : ''); },
+      which: function (n, q) { return 'Encontré ' + n + ' campos que podrían ser “' + q + '”:'; },
+      blocked: function (l) { return 'No voy a rellenar “' + l + '” por voz. Parece un campo de contraseña, de pago u otro dato sensible. Por favor, escríbelo tú.'; },
+      readonly: function (l) { return '“' + l + '” es de solo lectura o está desactivado, así que no puedo cambiarlo.'; },
+      unsupported: function (l, k) { return '“' + l + '” es un control de tipo ' + k + '. Ese no puedo cambiarlo por voz, úsalo tú, por favor.'; },
+      invalid: function (l, why) { return 'Eso no parece un ' + why + ' válido para “' + l + '”, así que no cambié nada. Por favor, dilo otra vez.'; },
+      confirm: function (l, v) { return 'Voy a cambiar ' + l + ' a ' + v + '. ¿Es correcto? Di sí o no.'; },
+      what: 'ese cambio',
+      doing: function (l) { return 'Cambiando ' + l + '.'; },
+      done: function (l, v) { return 'Listo. ' + l + ' ahora muestra ' + v + '. No he enviado el formulario: di “haz clic en guardar” o pulsa el botón cuando quieras.'; },
+      mismatch: function (l, v) { return 'Lo introduje, pero ' + l + ' ahora muestra “' + v + '”, así que no puedo confirmar el cambio. Revisa el campo, por favor.'; },
+      gone: function (l) { return 'El campo ' + l + ' ya no está disponible, así que no cambié nada.'; },
+      stopped: 'Vale, me detuve antes de cambiar nada.',
+      undoNone: 'No hay nada que deshacer.',
+      undone: function (l) { return 'Deshecho. ' + l + ' vuelve a estar como antes.'; },
+      undoFail: function (l) { return 'Intenté dejar ' + l + ' como estaba, pero no puedo confirmarlo. Revisa el campo, por favor.'; },
+      why: { phone: 'número de teléfono', email: 'correo electrónico', number: 'número', url: 'enlace web', option: 'opción', length: 'valor (es demasiado largo)', pattern: 'valor', range: 'número dentro del rango permitido' },
+      kinds: { date: 'fecha u hora', checkbox: 'casilla', radio: 'botón de opción', file: 'archivo', range: 'deslizador', color: 'color', other: 'especial' }
+    },
+    m: {
+      off: 'En este sitio no guardo nada sobre los visitantes, así que no hay nada que recordar ni olvidar.',
+      hint: 'Si quieres, puedo recordar tu nombre en este dispositivo. Solo di “recuérdame”.',
+      consentAsk: 'Puedo recordar tu nombre, las páginas que visitas y las notas que me pidas guardar. Se queda solo en este dispositivo, nunca datos de salud ni de pago, y puedes decir “olvídame” cuando quieras. ¿Quieres que lo haga? Di sí o no.',
+      consentAskName: function (n) { return 'Encantada, ' + n + '. ¿Quieres que lo recuerde en este dispositivo? Se queda aquí, nunca datos de salud ni de pago, y puedes decir “olvídame” cuando quieras. ¿Sí o no?'; },
+      consentAskFact: 'Puedo guardar esa nota solo en este dispositivo, nunca datos de salud ni de pago, y puedes decir “olvídame” cuando quieras. ¿Quieres que lo haga? Di sí o no.',
+      consentOk: 'Vale. Recordaré solo en este dispositivo. Di “qué recuerdas” para verlo, o “olvídame” para borrarlo.',
+      alreadyOn: 'Ya estoy recordando en este dispositivo. Di “qué recuerdas” para verlo, o “olvídame” para borrarlo.',
+      resumed: 'Vale, vuelvo a recordar.',
+      savedName: function (n) { return 'Entendido, ' + n + '. Lo recordaré.'; },
+      sessionName: function (n) { return 'Vale, ' + n + '. Usaré ese nombre solo en esta visita.'; },
+      badName: 'No entendí un nombre. Prueba con “me llamo” y tu nombre.',
+      savedFact: 'Anotado. Lo guardo en este dispositivo.',
+      refuse: 'No guardo datos de salud, de pago ni contraseñas. El sistema de tu profesional es el lugar adecuado para eso.',
+      recallNone: 'No tengo nada guardado sobre ti en este dispositivo.',
+      recall: function (parts) { return 'Esto es lo que tengo en este dispositivo: ' + parts + '. Nunca guardo datos de salud ni de pago. Di “olvídame” para borrarlo todo.'; },
+      rName: function (n) { return 'tu nombre, ' + n; },
+      rVisits: function (n) { return 'nos has visitado ' + n + (n === 1 ? ' vez' : ' veces'); },
+      rPages: function (l) { return 'páginas recientes: ' + l; },
+      rNotes: function (l) { return (l.length === 1 ? 'una nota: ' : l.length + ' notas: ') + l.map(function (x) { return '“' + x + '”'; }).join(', '); },
+      paused: 'Vale. Dejo de añadir cosas. Lo que ya guardé se queda hasta que digas “olvídame”.',
+      forgetAsk: '¿Borro todo lo que recuerdo de ti en este dispositivo? Di sí o no.',
+      forgetNameAsk: '¿Borro tu nombre de lo que recuerdo? Di sí o no.',
+      forgot: 'Listo. Lo borré y lo comprobé: ya no hay nada guardado en este dispositivo.',
+      forgotName: 'Listo. Borré tu nombre y comprobé que ya no está.',
+      forgotFail: 'Intenté borrarlo, pero no puedo confirmar que ya no esté. Puedes borrar los datos de este sitio en la configuración del navegador.',
+      nothing: 'No hay nada guardado, así que no hay nada que olvidar.',
+      welcome: function (n, last) { return 'Qué bueno verte de nuevo' + (n ? ', ' + n : '') + '.' + (last ? ' La última vez estabas mirando “' + last + '”.' : ''); },
+      that: 'eso',
+      noStore: 'Este navegador no me deja guardar nada en este dispositivo, así que no puedo recordarte. Usaré tu nombre solo en esta visita.',
+      lastTime: function (last) { return 'La última vez estabas mirando “' + last + '”.'; }
+    },
+    k: {
+      from: function (s) { return 'Eso viene de ' + s + '.'; },
+      goAsk: '¿Quieres que te lleve allí para leer el resto? Di sí o no.',
+      medText: function (s) { return 'La sección ' + s + ' tiene detalles médicos. No leeré en voz alta dosis ni tratamientos, porque dependen de tu situación. Consúltalo con tu profesional.'; },
+      none: 'No encontré eso en las páginas de este sitio, y prefiero no adivinar.',
+      noneSuggest: function (l) { return ' Quizá te ayude “' + l + '”. ¿Quieres que te lleve? Di sí o no.'; },
+      noneTip: ' Puedes preguntarlo de otra forma o contactar con el equipo del sitio.',
+      medical: 'No puedo dar consejo médico ni decirte qué tomar. Pregunta a tu médico, tu farmacéutico o tu equipo de cuidado.',
+      medicalGo: function (l) { return ' Puedo llevarte a “' + l + '”. Di sí o no.'; },
+      that: 'eso'
+    },
+    help: { forms: ' Para cambiar un campo, di “cambia mi teléfono a” y el número nuevo.', memory: ' Di “recuérdame” y recordaré tu nombre en este dispositivo.', knowledge: ' Puedes preguntar sobre este sitio, por ejemplo “¿cuál es la política de devoluciones?”.' }
+  };
+
+
+  /* ---- skills grammar (matched on accent-folded, lowercased text) ---- */
+  Object.assign(PACKS.en.sk.k, {
+    srcSec: function (q, page) { return 'the “' + q + '” section' + (page ? ' of the “' + page + '” page' : ''); },
+    srcOwner: 'the site’s own notes'
+  });
+  Object.assign(PACKS.es.sk.k, {
+    srcSec: function (q, page) { return 'la sección “' + q + '”' + (page ? ' de la página “' + page + '”' : ''); },
+    srcOwner: 'las notas del propio sitio'
+  });
+  PACKS.en.sg = {
+    pre: /^(please|could you|can you|would you|will you|i want to|i would like to|id like to|i d like to|i need to|lets|let s|i wanna|go ahead and|hey|ok|okay|hi|hello|voicelayer|assistant)\s+/,
+    mem: {
+      enable: /^(remember me|remember my name|remember my preferences|remember this for me|start remembering|start remembering me|keep my details|save my preferences|you can remember me|please remember me)$/,
+      pause: /^(stop remembering|stop remembering me|stop saving|stop learning|stop learning about me|dont remember me|dont remember anything|do not remember me|dont save anything)$/,
+      recall: /^(what do you (remember|know)( about me)?|what have you (saved|stored|remembered)( about me)?|whats (saved|stored) about me|what did you save|what data do you have( on me| about me)?|what do you have on me|show me what you remember|what are you remembering|what are you remembering about me)$/,
+      forget: /^(forget me|forget everything|forget all of it|forget everything about me|delete (my data|everything|my memory|what you remember|all my data|my info|my information|me)|erase (my data|everything|me|my memory)|clear (my data|my memory|everything)|wipe (my data|everything|my memory))$/,
+      forgetName: /^(forget my name|delete my name|erase my name|remove my name)$/,
+      name: /\b(?:my name is|call me|im called|i am called|they call me)\s+(.+)$/,
+      fact: /\b(?:remember that|make a note that|note that|take a note that|keep a note that)\s+(.+)$/
+    },
+    notName: /^(back|later|tomorrow|now|when|if|maybe|at|on|please|an?|the|it|that)\b|^(\S+\s+){3,}\S+$/,
+    undo: /^(undo|undo that|undo the change|undo that change|put it back|revert|revert that|revert it|revert the change|change it back|set it back)$/,
+    formset: [
+      { re: /^(?:(?:please|could you|can you|would you|i want to|i would like to|id like to|i need to|lets|go ahead and)\s+)*(?:change|set|update|edit|correct|fix|replace)\s+(?:my|the|your|our)?\s*(.+?)\s+(?:to|as|with|so it says|should be|is now)\s+(.+)$/, f: 1, v: 2 },
+      { re: /^(?:(?:please|could you|can you|would you|i want to|i would like to|id like to|i need to|lets|go ahead and)\s+)*(?:enter|type|put|write|fill in|fill out|input)\s+(.+?)\s+(?:in|into|in to|for)\s+(?:my|the|your)?\s*(.+?)(?:\s+(?:field|box|input|form))?$/, f: 2, v: 1 },
+      { re: /^(?:my|the)\s+(.+?)\s+(?:is|are now|has changed to)\s+(.+)$/, f: 1, v: 2, soft: true }
+    ],
+    contactQ: 'contact appointment book',
+    notField: /^(language|the language|voice|speed|volume|mode|theme|assistant|voice assistant|sound|it|that|this|everything|your voice|the voice)$/,
+    q: /^(what|whats|how|hows|when|where|who|whos|why|which|do|does|did|can|could|is|are|will|would|should|tell me|i want to know|i would like to know|id like to know|explain|any|got)\b/,
+    medText: /\b(dose|doses|dosage|dosing|mg|milligrams?|tablets?|capsules?|inject\w*|contraindicat\w*|side effects?|take (one|two|three|\d+)|units of|insulin|titrat\w*)\b/,
+    medBiz: /\b(return|returns|refund|ship|shipping|deliver\w*|order|orders|buy|cost|price|prices|pay|payment|cancel|exchange|warranty|appointment|schedule|book|hours|open|located|location|address|contact|account|login|sign ?up|membership|subscription|discount|coupon|policy|policies)\b/,
+    medAdvice: /\b(should i|can i|may i|could i|is it ok(ay)? (to|if i)|is it safe (to|for me)|do i need (to|a)|what should i|am i|do i have|why do i|why am i|how (do|can) i (treat|cure|fix|stop|lower|raise|manage))\b/,
+    medTerms: /\b(medic\w*|pills?|tablets?|capsules?|doses?|dosage|insulin|drugs?|antibiotics?|painkillers?|ibuprofen|aspirin|tylenol|paracetamol|vitamins?|supplements?|prescription\w*|injections?|inject\w*|symptoms?|diagnos\w+|treatment|therapy|surgery|pain|fever|infection|allerg\w+|blood pressure|blood sugar|glucose|pregnan\w+|rash|cough|headache|chest|dizz\w+|nausea|bleeding|cancer|diabet\w+|disease|condition|sick|ill|dying)\b/,
+    medExplicit: /\b(diagnose me|what is wrong with me|am i dying|am i having a|do i have (a |an )?\w* ?(disease|infection|cancer|diabetes|disorder)|what (dose|dosage) (should|do) i|how much (.* )?should i (take|inject|use)|should i (take|stop|start|increase|decrease|skip|double) (my |the |some )?(meds?|medicat\w*|pills?|insulin|dose|dosage|antibiotics?|supplements?)|treat my|cure my)\b/
+  };
+  PACKS.es.sg = {
+    pre: /^(por favor|puedes|podrias|podria|puede|quiero|quisiera|me gustaria|necesito|vamos a|a ver|oye|vale|ok|okay|venga|ahora|hola|hey|voicelayer|asistente)\s+/,
+    mem: {
+      enable: /^(recuerdame|recuerda me|acuerdate de mi|recuerda mi nombre|recuerda mis preferencias|empieza a recordar|guarda mis preferencias|guarda mis datos|recordarme|puedes recordarme)$/,
+      pause: /^(deja de recordar|deja de recordarme|no me recuerdes|no guardes nada|deja de guardar|no recuerdes nada|deja de aprender)$/,
+      recall: /^(que recuerdas( de mi)?|que sabes de mi|que has guardado( de mi)?|que tienes guardado( de mi)?|que datos tienes( de mi| mios)?|muestrame lo que recuerdas|que estas recordando|que guardas de mi)$/,
+      forget: /^(olvidame|olvida todo|olvida todo lo que sabes de mi|borra todo|borra mis datos|borra lo que recuerdas|elimina mis datos|elimina todo|borrame|borra mi memoria|olvidate de mi)$/,
+      forgetName: /^(olvida mi nombre|borra mi nombre|elimina mi nombre)$/,
+      name: /\b(?:me llamo|mi nombre es|llamame)\s+(.+)$/,
+      fact: /\b(?:recuerda que|anota que|apunta que|toma nota de que|toma nota que|guarda que)\s+(.+)$/
+    },
+    notName: /^(luego|despues|manana|mas tarde|ahora|cuando|si|a las|al|por favor|un|una|el|la|eso)\b|^(\S+\s+){3,}\S+$/,
+    undo: /^(deshaz|deshacer|deshaz eso|deshaz el cambio|deshacer el cambio|vuelve a ponerlo|ponlo como estaba|revierte|revertir|revierte el cambio)$/,
+    formset: [
+      { re: /^(?:(?:por favor|puedes|podrias|quiero|necesito|quisiera|me gustaria)\s+)*(?:cambia|cambiar|actualiza|actualizar|edita|editar|corrige|corregir|modifica|modificar|cambiame)\s+(?:mi|mis|el|la|tu)?\s*(.+?)\s+(?:a|por|como|con|para que diga|en|sea)\s+(.+)$/, f: 1, v: 2 },
+      { re: /^(?:(?:por favor|puedes|podrias|quiero|necesito|quisiera|me gustaria)\s+)*(?:pon|poner|ponme)\s+(?:mi|mis|el|la)\s+(.+?)\s+(?:a|como|en)\s+(.+)$/, f: 1, v: 2 },
+      { re: /^(?:(?:por favor|puedes|podrias|quiero|necesito|quisiera|me gustaria)\s+)*(?:escribe|teclea|introduce|pon|anota|ingresa)\s+(.+?)\s+(?:en|dentro de|para)\s+(?:mi|el|la|tu)?\s*(.+?)(?:\s+(?:campo|casilla|cuadro|formulario))?$/, f: 2, v: 1 },
+      { re: /^(?:mi|mis|el|la)\s+(.+?)\s+(?:es|son|ahora es|ha cambiado a)\s+(.+)$/, f: 1, v: 2, soft: true }
+    ],
+    contactQ: 'contacto cita reservar',
+    notField: /^(idioma|el idioma|lenguaje|voz|la voz|velocidad|volumen|modo|tema|asistente|el asistente|sonido|eso|esto|todo)$/,
+    q: /^(que|cual|cuales|como|cuando|donde|quien|por que|cuanto|cuanta|cuantos|cuantas|puedo|puede|pueden|hay|tienen|tiene|tienes|se puede|es posible|dime|cuentame|explicame|venden|vende|ofrecen|ofrece|aceptan|acepta|atienden|abren|cierran|hacen|trabajan|dan|cobran|necesito saber)\b/,
+    medText: /\b(dosis|mg|miligramos?|tabletas?|pastillas?|capsulas?|inyect\w*|contraindicac\w*|efectos secundarios|insulina|tomar (uno|una|dos|tres|\d+)|unidades de)\b/,
+    medBiz: /\b(devoluci\w*|reembolso|envio|envios|entrega|pedido|pedidos|comprar|costo|precio|precios|pagar|pago|cancelar|cambio|garantia|cita|horario|horarios|ubicacion|direccion|contacto|cuenta|suscripcion|membresia|descuento|cupon|politica|politicas)\b/,
+    medAdvice: /\b(debo|debería|deberia|puedo|podria|es seguro|necesito|tengo|por que me|como (puedo )?(tratar|curar|bajar|subir|controlar)|que debo)\b/,
+    medTerms: /\b(medic\w*|pastillas?|tabletas?|capsulas?|dosis|insulina|farmacos?|antibioticos?|analgesicos?|ibuprofeno|aspirina|paracetamol|vitaminas?|suplementos?|receta|inyecc\w*|sintomas?|diagnostic\w*|tratamiento|terapia|cirugia|dolor|fiebre|infeccion|alergi\w+|presion arterial|azucar en sangre|glucosa|embaraz\w+|sarpullido|tos|dolor de cabeza|pecho|mareo\w*|nauseas?|sangrado|cancer|diabet\w+|enfermedad|enfermo|enferma)\b/,
+    medExplicit: /\b(diagnosticame|que me pasa|me estoy muriendo|tengo (una |un )?\w* ?(enfermedad|infeccion|cancer|diabetes|trastorno)|que dosis (debo|tomo)|cuanto (.* )?debo (tomar|inyectar|usar)|debo (tomar|dejar|empezar|aumentar|reducir|saltar|duplicar) (mi |mis |la |el |las |los )?(medicacion|medicamentos?|pastillas?|insulina|dosis|antibioticos?|suplementos?)|tratar mi|curar mi)\b/
+  };
+
   const CP_LINT = /\b(you (need|must|should|have) (to )?(take|buy|start|stop|use)|you are (deficient|sick|ill)|you have (an? )?(disease|disorder|condition|deficiency|illness)|diagnos\w*|prescrib\w*|tienes que (tomar|comprar|usar)|debes (tomar|comprar|dejar|usar)|estas (enferm[oa]|deficiente)|tienes (una |un )?(enfermedad|deficiencia|trastorno)|diagnostic\w*|recet\w*)\b/i;
   const CP_RULES = {
     wellness: [
@@ -898,13 +1107,14 @@
       const P = I.cp, cfg = this.cfg;
       await this.load();
       if (!alive()) return;
-      const name = this.data.name || cfg.name || '';
+      const name = this.data.name || Memory.name() || cfg.name || '';
       UI.setDemo(!!(cfg.demo || this.data.demo));
       if (this.greeted || store.sget(KEYS.cdone)) { this.greeted = true; this.stage = 'insights'; this.emit('welcome_back'); return VL.say(P.back(name)); }
       this.greeted = true; store.sset(KEYS.cdone, '1');
       const g = cfg.greeting && (typeof cfg.greeting === 'object' ? cfg.greeting[LANG] : cfg.greeting);
       const hello = g ? g.replace(/\{name\}/g, name) : P.hello(P.part[cpDaypart()], name);
-      const text = hello + (cfg.demo || this.data.demo ? ' ' + P.demoNote : '') + ' ' + (P.moodQ[cfg.preset] || P.moodQ.none);
+      const rt = Memory.ret(), back = rt && rt.last ? ' ' + I.sk.m.lastTime(rt.last) : '';
+      const text = hello + back + (cfg.demo || this.data.demo ? ' ' + P.demoNote : '') + ' ' + (P.moodQ[cfg.preset] || P.moodQ.none);
       this.stage = 'mood'; this.emit('greeted');
       await VL.say(text);
     },
@@ -1744,7 +1954,21 @@
       const cands = vs.filter(function (v) { return v.lang && v.lang.toLowerCase().replace('_', '-').indexOf(base) === 0; });
       const exact = cands.filter(function (v) { return v.lang.toLowerCase().replace('_', '-') === lang; });
       const pool = exact.length ? exact : cands;
-      return pool.find(function (v) { return /natural|neural|google|samantha|monica|paulina|enhanced/i.test(v.name); }) || pool[0] || null;
+      // gender: browsers don't publish it, so match well-known voice names (this is a best-effort heuristic, not a guarantee)
+      const FEM = /female|woman|samantha|victoria|karen|moira|tessa|fiona|allison|ava|susan|zira|hazel|aria|jenny|libby|sonia|michelle|emma|ana\b|monica|paulina|helena|laura|sabina|elvira|dalia|elena|salome|catalina|mia\b|isabella|lucia|marisol|paloma|camila|natasha|clara|sara\b|microsoft (aria|jenny|zira|sonia|libby|hazel|ana|elvira|dalia|helena|laura|sabina|salome|catalina|elena|paloma|camila|lucia|marisol)|google (uk english female|us english)|siri.*female/i;
+      const MAL = /\bmale\b|\bman\b|daniel|alex\b|fred\b|david|mark\b|george|james|ryan|guy\b|davis|christopher|eric\b|roger|steffan|jorge|diego|juan|pablo|raul|alvaro|jaime|arnau|tomas|enrique|ricardo|google uk english male/i;
+      const NICE = /natural|neural|online|enhanced|premium|google|samantha|monica|paulina/i, g = CONFIG.voiceGender;
+      const rankV = function (v) {
+        let sc = 0;
+        if (g === 'female') { if (MAL.test(v.name) && !/female/i.test(v.name)) sc -= 6; if (FEM.test(v.name)) sc += 6; }
+        else if (g === 'male') { if (FEM.test(v.name)) sc -= 6; if (MAL.test(v.name)) sc += 6; }
+        if (NICE.test(v.name)) sc += 2;
+        if (v.localService === false && /natural|neural|online/i.test(v.name)) sc += 1;
+        return sc;
+      };
+      let best = null, bs = -99;
+      pool.forEach(function (v) { const sc = rankV(v); if (sc > bs) { bs = sc; best = v; } });
+      return best;
     },
 
     /** split into sentence-sized chunks — long utterances silently die in Chrome (~15s bug) */
@@ -2578,6 +2802,408 @@
   }
 
   /* =========================================================================
+   * 7b. SKILLS — three opt-in engines, all rule-based (no LLM), all visitor-driven:
+   *     Forms      "change my phone to …"  → find field → read back → yes/no → fill → verify. Never password/payment, never submits.
+   *     Memory     consent-gated, this device only (localStorage). Name, visit count, recent pages, notes the visitor asks for.
+   *     Knowledge  answers from the site's OWN text, always naming the section it came from. No match = "I don't know".
+   * ========================================================================= */
+  const SENS_FIELD = /pass(word|code|wd|phrase)|\bpass\b|passwd|\bpwd\b|cvv|cvc|cvn|\bcard|credit|debit|\biban\b|\bswift\b|routing|account ?(no|num)|\bssn\b|social ?sec|security ?code|one ?time|\botp\b|\bpin\b|\bsecret\b|contrasena|\bclave\b|tarjeta|cuenta bancaria|seguro social|codigo de seguridad/;
+  const SENS_TEXT = /pass(word|code|wd|phrase)|\bpin\b|\bcvv\b|\bcvc\b|\bcard\b|credit|debit|\biban\b|\bssn\b|social security|diagnos|medicat|prescri|\bdose\b|\bdosage\b|\bmg\b|insulin|glucose|blood|pressure|allerg|pregnan|cancer|diabet|\bhiv\b|depress|anxiety|therapy|surgery|symptom|contrasena|\bclave\b|tarjeta|diagnostic|medicacion|receta|dosis|presion|glucosa|alergia|embaraz|depresion|ansiedad|terapia|cirugia|sintoma/;
+  const NUMW = { zero: 0, oh: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, cero: 0, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9 };
+
+  /** accent-folded lowercase copy of `raw` that remembers where every character came from, so a spoken VALUE keeps its original case/accents */
+  function fold(raw) {
+    const str = clean(raw); let s = ''; const map = [];
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i]; if (ch === '\'' || ch === '\u2019') continue;
+      const b = ch.normalize('NFD').replace(/\p{M}+/gu, '').toLowerCase();
+      for (let j = 0; j < b.length; j++) { s += b[j]; map.push(i); }
+    }
+    return { s: s, map: map, raw: str };
+  }
+  function sliceOf(f, start, len) { if (!len || f.map[start] == null) return ''; const a = f.map[start], b = f.map[Math.min(f.map.length - 1, start + len - 1)]; return clean(f.raw.slice(a, b + 1)).replace(/[\s.!?¿¡]+$/, ''); }
+
+  /** the grammar for the three skills; returns an intent or null (language comes from the active pack) */
+  function parseSkills(raw) {
+    const G = I.sg; if (!G) return null;
+    const f = fold(raw), s = f.s;
+    const sn = s.replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    let tn = sn; for (let i = 0; i < 3; i++) tn = tn.replace(G.pre, '');
+    tn = tn.replace(/\s+(please|thanks|thank you|por favor|gracias)$/, '').trim();
+    let m;
+    // ---- memory ----
+    if (G.mem.enable.test(tn)) return { type: 'mem', act: 'enable', raw: raw };
+    if (G.mem.pause.test(tn)) return { type: 'mem', act: 'pause', raw: raw };
+    if (G.mem.recall.test(tn)) return { type: 'mem', act: 'recall', raw: raw };
+    if (G.mem.forgetName.test(tn)) return { type: 'mem', act: 'forgetname', raw: raw };
+    if (G.mem.forget.test(tn)) return { type: 'mem', act: 'forget', raw: raw };
+    if (Memory.enabled()) {
+      if ((m = s.match(G.mem.name)) && !G.notName.test(m[1])) { const v = sliceOf(f, s.lastIndexOf(m[1]), m[1].length).replace(/\s+(please|thanks|thank you|por favor|gracias)$/i, ''); return { type: 'mem', act: 'name', val: v, raw: raw }; }
+      if ((m = s.match(G.mem.fact))) { const v = sliceOf(f, s.lastIndexOf(m[1]), m[1].length); return { type: 'mem', act: 'fact', val: v, raw: raw }; }
+    }
+    // ---- forms ----
+    if (CONFIG.forms) {
+      if (G.undo.test(tn)) return { type: 'formundo', raw: raw };
+      for (let i = 0; i < G.formset.length; i++) {
+        const rule = G.formset[i]; m = s.match(rule.re); if (!m) continue;
+        const fld = norm(m[rule.f]), val = m[rule.v];
+        if (!fld || !val || G.notField.test(fld)) continue;
+        const start = rule.v > rule.f ? s.lastIndexOf(val) : s.indexOf(val, m.index);
+        return { type: 'formset', field: fld, value: sliceOf(f, start, val.length), soft: !!rule.soft, raw: raw };
+      }
+    }
+    return null;
+  }
+
+  /* ------------------------------------------------------------------ FORMS */
+  const FSYN = [
+    [/\b(e mail address|email address|mail address|direccion de correo|correo electronico|e mail|correo|email|mail)\b/g, 'email'],
+    [/\b(phone number|telephone number|cell phone number|mobile number|cell number|cellphone|cell phone|telephone|mobile phone|numero de telefono|numero de movil|numero de celular|telefono|movil|celular|mobile|cell|tel)\b/g, 'phone'],
+    [/\b(street address|home address|mailing address|direccion postal|direccion|domicilio)\b/g, 'address'],
+    [/\b(zip code|postal code|post code|codigo postal|zip)\b/g, 'zip']
+  ];
+  function fnorm(s) { let t = norm(s); FSYN.forEach(function (r) { t = t.replace(r[0], r[1]); }); return t.replace(/\s+/g, ' ').trim(); }
+
+  /** an element of THIS page (a node parsed from another page's HTML reports isConnected too, so check the document) */
+  function liveEl(el) { return !!(el && el.isConnected && el.ownerDocument === document); }
+
+  const Forms = {
+    last: null,
+    enabled: function () { return !!CONFIG.forms; },
+    labelsOf: function (el) {
+      const out = [], add = function (t) { t = clean(t).replace(/[*:]+$/, '').trim(); if (t && t.length < 90 && out.indexOf(t) < 0) out.push(t); };
+      try { if (el.id) qsa('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]').forEach(function (l) { add(l.textContent); }); } catch (e) {}
+      const w = el.closest('label');
+      if (w) { const c = w.cloneNode(true); qsa('input,select,textarea,option', c).forEach(function (x) { x.remove(); }); add(c.textContent); }
+      add(el.getAttribute('aria-label'));
+      const lb = el.getAttribute('aria-labelledby'); if (lb) lb.split(/\s+/).forEach(function (id) { const e = document.getElementById(id); if (e) add(e.textContent); });
+      add(el.getAttribute('placeholder')); add(el.getAttribute('title'));
+      add((el.getAttribute('name') || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_\[\]]+/g, ' '));
+      add((el.id || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' '));
+      const t = (el.getAttribute('type') || '').toLowerCase();
+      if (t === 'tel') add('phone'); if (t === 'email') add('email');
+      return out;
+    },
+    kindOf: function (el, labels) {
+      const tag = el.tagName, t = (el.getAttribute('type') || 'text').toLowerCase();
+      if (tag === 'SELECT') return 'select';
+      if (tag === 'TEXTAREA') return 'textarea';
+      if (t === 'password') return 'password';
+      if (/^(checkbox)$/.test(t)) return 'checkbox'; if (t === 'radio') return 'radio'; if (t === 'file') return 'file'; if (t === 'range') return 'range'; if (t === 'color') return 'color';
+      if (/^(date|time|datetime-local|month|week)$/.test(t)) return 'date';
+      const h = labels.map(fnorm).join(' ');
+      if (t === 'tel' || /\bphone\b/.test(h)) return 'phone';
+      if (t === 'email' || /\bemail\b/.test(h)) return 'email';
+      if (t === 'url') return 'url';
+      if (t === 'number') return 'number';
+      return 'text';
+    },
+    blockedReason: function (el, labels, kind) {
+      if (kind === 'password') return 'password';
+      if (el.closest('[data-vl-nofill]')) return 'owner';
+      const ac = (el.getAttribute('autocomplete') || '').toLowerCase();
+      if (/^(cc-|current-password|new-password|one-time-code)/.test(ac)) return 'payment';
+      const hay = (labels.join(' ') + ' ' + (el.getAttribute('name') || '') + ' ' + (el.id || '')).toLowerCase().replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ');
+      if (SENS_FIELD.test(hay)) return 'sensitive';
+      return '';                      // blocking is per FIELD: a phone number on a profile page is fine. Submit/Pay buttons on payment forms stay guarded by doClick.
+    },
+    /** the visitor said a value for a sensitive field: never echo it into the transcript or the command event */
+    redact: function (text) {
+      try {
+        if (!CONFIG.forms) return text;
+        const it = parseSkills(text); if (!it || it.type !== 'formset' || !it.value) return text;
+        let hidden = SENS_FIELD.test(it.field);
+        if (!hidden) { const c = this.fields(), h = this.match(c, it.field)[0]; hidden = !!(h && h.card.blocked); }
+        if (!hidden) return text;
+        const i = String(text).toLowerCase().lastIndexOf(String(it.value).toLowerCase());
+        return i < 0 ? String(text).replace(/\S+$/, '••••') : String(text).slice(0, i) + '••••' + String(text).slice(i + it.value.length);
+      } catch (e) { return text; }
+    },
+    describe: function (el) {
+      const labels = this.labelsOf(el), kind = this.kindOf(el, labels);
+      return { el: el, labels: labels, label: labels[0] || (el.getAttribute('type') || el.tagName.toLowerCase()), kind: kind, blocked: this.blockedReason(el, labels, kind), readonly: !!(el.readOnly || isDisabled(el)) };
+    },
+    fields: function () {
+      const self = this;
+      return qsa('input, textarea, select').filter(function (el) {
+        if (el.closest(SKIP_SEL)) return false;
+        const t = (el.getAttribute('type') || 'text').toLowerCase();
+        if (el.tagName === 'INPUT' && /^(hidden|submit|button|reset|image)$/.test(t)) return false;
+        return isVisible(el);
+      }).map(function (el) { return self.describe(el); });
+    },
+    match: function (cards, q) {
+      const fq = fnorm(q), out = [];
+      cards.forEach(function (c) {
+        let best = 0; c.labels.forEach(function (l) { best = Math.max(best, score(fq, fnorm(l))); });
+        if (best >= 0.6) out.push({ card: c, score: best });
+      });
+      return out.sort(function (a, b) { return b.score - a.score; });
+    },
+    /** spoken value → what goes into the field, or {err: key} */
+    normalize: function (card, v) {
+      v = clean(v).replace(/^["“”'‘’]+|["“”'‘’]+$/g, '');
+      const el = card.el; if (!v) return { err: 'pattern' };
+      let out = v;
+      switch (card.kind) {
+        case 'email': {
+          out = v.toLowerCase().replace(/\s+(at|arroba)\s+/g, '@').replace(/\s+(dot|punto)\s+/g, '.').replace(/\s+(underscore|guion bajo)\s+/g, '_').replace(/\s+(dash|hyphen|guion)\s+/g, '-').replace(/\s+/g, '');
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(out)) return { err: 'email' };
+          break;
+        }
+        case 'phone': {
+          if (/^[\d\s\-().+]+$/.test(v)) out = v;
+          else {
+            const toks = v.toLowerCase().replace(/[,.\-()]/g, ' ').split(/\s+/).filter(Boolean); let d = '', plus = false, dbl = 1;
+            for (let i = 0; i < toks.length; i++) {
+              const k = toks[i];
+              if (k === 'plus' || k === 'mas') { plus = true; continue; }
+              if (k === 'double' || k === 'doble') { dbl = 2; continue; } if (k === 'triple') { dbl = 3; continue; }
+              if (/^\d+$/.test(k)) { d += k; dbl = 1; continue; }
+              if (NUMW[k] != null) { d += String(NUMW[k]).repeat(dbl); dbl = 1; continue; }
+              return { err: 'phone' };
+            }
+            out = (plus ? '+' : '') + d;
+          }
+          const n = out.replace(/\D/g, '').length; if (n < 7 || n > 15) return { err: 'phone' };
+          break;
+        }
+        case 'number': {
+          const mm = v.replace(/\s+/g, '').match(/^-?\d+(?:[.,]\d+)?$/); if (!mm) return { err: 'number' };
+          out = mm[0].replace(',', '.');
+          const lo = el.min !== '' ? parseFloat(el.min) : null, hi = el.max !== '' ? parseFloat(el.max) : null, nv = parseFloat(out);
+          if ((lo != null && !isNaN(lo) && nv < lo) || (hi != null && !isNaN(hi) && nv > hi)) return { err: 'range' };
+          break;
+        }
+        case 'url': {
+          out = v.toLowerCase().replace(/\s+(dot|punto)\s+/g, '.').replace(/\s+(slash|barra)\s+/g, '/').replace(/\s+/g, '');
+          if (!/^(https?:\/\/)?[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(out)) return { err: 'url' };
+          break;
+        }
+        case 'select': {
+          const opts = qsa('option', el).filter(function (o) { return !o.disabled && (o.value !== '' || clean(o.textContent)); });
+          const hits = rank(opts, v, 0.7, function (o) { return clean(o.textContent) + ' ' + o.value; });
+          if (!hits.length || (hits.length > 1 && hits[0].score - hits[1].score < 0.1 && hits[0].score < 0.99)) return { err: 'option' };
+          return { value: hits[0].item.value, optionText: clean(hits[0].item.textContent), option: hits[0].item };
+        }
+        default: out = v;
+      }
+      const max = el.maxLength > 0 ? el.maxLength : (card.kind === 'textarea' ? 500 : 200);
+      if (out.length > max) return { err: 'length' };
+      if (el.pattern) { try { if (!new RegExp('^(?:' + el.pattern + ')$').test(out)) return { err: 'pattern' }; } catch (e) {} }
+      return { value: out };
+    },
+    /** is this field still safe to touch right now? returns '' or a reason */
+    recheck: function (card) {
+      const el = card.el;
+      if (!el.isConnected || !isVisible(el)) return 'gone';
+      if (el.readOnly || isDisabled(el)) return 'readonly';
+      if (this.blockedReason(el, this.labelsOf(el), this.kindOf(el, this.labelsOf(el)))) return 'blocked';
+      return '';
+    },
+    setValue: function (el, v) {
+      try { el.focus({ preventScroll: true }); } catch (e) {}
+      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+      const d = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (d && d.set) d.set.call(el, v); else el.value = v;                      // the native setter, so React/Vue-style frameworks see the change
+      let ev; try { ev = new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: v }); } catch (e) { ev = new Event('input', { bubbles: true }); }
+      el.dispatchEvent(ev); el.dispatchEvent(new Event('change', { bubbles: true }));
+      try { el.blur(); } catch (e) {}
+    },
+    same: function (card, want, got) {
+      got = String(got == null ? '' : got);
+      if (card.kind === 'phone') return got.replace(/\D/g, '') === String(want).replace(/\D/g, '');
+      if (card.kind === 'email') return clean(got).toLowerCase() === String(want).toLowerCase();
+      if (card.kind === 'number') return parseFloat(got) === parseFloat(want);
+      return clean(got) === clean(want);
+    },
+    /** how the value is read aloud: digits one by one, e-mail as "name at site dot com" */
+    speak: function (v, kind) {
+      v = String(v == null ? '' : v);
+      if (/@/.test(v) || kind === 'email') return v.replace(/@/g, ' ' + (LANG === 'es' ? 'arroba' : 'at') + ' ').replace(/\./g, ' ' + (LANG === 'es' ? 'punto' : 'dot') + ' ').replace(/_/g, ' ' + (LANG === 'es' ? 'guion bajo' : 'underscore') + ' ').replace(/-/g, ' ' + (LANG === 'es' ? 'guion' : 'dash') + ' ').replace(/\s+/g, ' ').trim();
+      if (kind === 'phone') return v.replace(/\+/g, (LANG === 'es' ? 'más ' : 'plus ')).replace(/\d/g, function (d) { return d + ' '; }).replace(/[^\d\sa-z]/gi, ' ').replace(/\s+/g, ' ').trim();
+      return v;
+    }
+  };
+
+  /* ------------------------------------------------------------------ MEMORY */
+  const Memory = {
+    cfg: null, d: null, sessName: '',
+    enabled: function () { return !!this.cfg; },
+    init: function () {
+      const c = CONFIG.memory; if (!c) { this.cfg = null; return; }
+      this.cfg = Object.assign({ ttlDays: 180, maxPages: 8, maxFacts: 10, pages: true, skipPaths: [] }, typeof c === 'object' ? c : {});
+      this.load(); this.visit();
+    },
+    blank: function () { return { v: 1, consent: false, paused: false, name: '', visits: 0, firstAt: 0, lastAt: 0, pages: [], facts: [] }; },
+    load: function () {
+      let d = null; try { d = JSON.parse(store.get(KEYS.mem) || 'null'); } catch (e) { d = null; }
+      if (d && d.v === 1 && d.consent && d.lastAt && Date.now() - d.lastAt > this.cfg.ttlDays * 864e5) { store.set(KEYS.mem, null); d = null; }    // expired = deleted
+      this.d = d && d.v === 1 ? d : null;
+    },
+    has: function () { return !!(this.d && this.d.consent); },
+    active: function () { return this.has() && !this.d.paused; },
+    write: function () { if (!this.d) return false; this.d.lastAt = Date.now(); const s = JSON.stringify(this.d); store.set(KEYS.mem, s); return store.get(KEYS.mem) === s; },
+    emit: function (type) { try { window.dispatchEvent(new CustomEvent('voicelayer:memory', { detail: { type: type } })); } catch (e) {} },
+    grant: function () {
+      if (!this.d) this.d = this.blank();
+      this.d.consent = true; this.d.paused = false; if (!this.d.firstAt) this.d.firstAt = Date.now();
+      if (!this.d.visits) { this.d.visits = 1; store.sset(KEYS.memVisit, String(Date.now())); }
+      this.recordPage(); const ok = this.write(); this.emit('consent'); return ok;
+    },
+    visit: function () {
+      if (!this.active()) return;
+      if (!store.sget(KEYS.memVisit)) { store.sset(KEYS.memVisit, String(Date.now())); this.d.visits = (this.d.visits || 0) + 1; }   // a "visit" = one browser session
+      this.recordPage(); this.write();
+    },
+    sessionStart: function () { return parseInt(store.sget(KEYS.memVisit) || '0', 10) || Date.now(); },
+    recordPage: function () {
+      if (!this.d || this.cfg.pages === false) return;
+      const p = location.pathname || '/', title = short(document.title || '', 60);
+      if ((this.cfg.skipPaths || []).some(function (x) { return p.indexOf(x) === 0; })) return;
+      if (!title || SENS_TEXT.test(norm(title))) return;                      // never keep a page title that looks health/payment related
+      const last = this.d.pages[this.d.pages.length - 1];
+      if (last && last.p === p && last.at >= this.sessionStart()) { last.t = title; last.at = Date.now(); return; }      // same page, same visit = update; same page on a LATER visit = a new entry
+      this.d.pages.push({ p: p, t: title, at: Date.now() });
+      while (this.d.pages.length > this.cfg.maxPages) this.d.pages.shift();
+    },
+    name: function () { return (this.active() && this.d.name) || this.sessName || ''; },
+    setName: function (n) { if (!this.d) return false; this.d.name = n; const ok = this.write() && JSON.parse(store.get(KEYS.mem)).name === n; if (ok) this.emit('saved'); return ok; },
+    addFact: function (t) { if (!this.d) return false; this.d.facts.push({ t: t, at: Date.now() }); while (this.d.facts.length > this.cfg.maxFacts) this.d.facts.shift(); const ok = this.write(); if (ok) this.emit('saved'); return ok; },
+    snapshot: function () { return this.has() ? JSON.parse(JSON.stringify(this.d)) : null; },
+    forgetName: function () { if (!this.d) return true; this.d.name = ''; this.sessName = ''; this.write(); const ok = !JSON.parse(store.get(KEYS.mem) || '{}').name; this.emit('forgot'); return ok; },
+    wipe: function () { store.set(KEYS.mem, null); store.sset(KEYS.memVisit, null); this.d = null; this.sessName = ''; const ok = store.get(KEYS.mem) === null; this.emit('forgot'); return ok; },
+    /** a RETURNING visitor (second session or later) → { name, last } ; otherwise null. `last` = a page title from an EARLIER visit, never this one */
+    ret: function () {
+      if (!this.active() || (this.d.visits || 0) < 2) return null;
+      const ss = this.sessionStart(), prev = this.d.pages.filter(function (p) { return p.at < ss; }).pop();
+      return { name: this.d.name || '', last: prev ? prev.t : '' };
+    }
+  };
+
+  /* ------------------------------------------------------------------ KNOWLEDGE */
+  const QSTOP = new Set(('what whats how do does did is are was were can could would should will your you my me our we the a an to of for in on at and or about tell please i it this that there any have has get be with from if when where who which why mine site website here their its ' +
+    'que cual cuales como cuando donde quien por para es son era fue puedo puede pueden podria tengo tiene tienen hay del los las una uno unos unas con sin sobre mi mis tu tus su sus nos este esta esto estos estas ese esa eso muy mas pero como cuanto cuanta cuantos cuantas').split(' '));
+  function stem(w) {
+    w = String(w || '').toLowerCase(); if (w.length < 4 || /^\d+$/.test(w)) return w;
+    if (LANG === 'es') { if (/[^aeiou]es$/.test(w)) w = w.slice(0, -2); else if (/s$/.test(w)) w = w.slice(0, -1); return w; }
+    if (/ies$/.test(w)) w = w.slice(0, -3) + 'y'; else if (/(sses|xes|ches|shes)$/.test(w)) w = w.slice(0, -2); else if (/[^s]s$/.test(w)) w = w.slice(0, -1);
+    if (w.length > 5 && /(ing|ed)$/.test(w)) w = w.replace(/(ing|ed)$/, '');
+    if (w.length > 4 && /e$/.test(w)) w = w.slice(0, -1);
+    if (/([^aeiou])\1$/.test(w) && w.length > 3 && !/(ss|ll)$/.test(w)) w = w.slice(0, -1);
+    return w;
+  }
+  function stems(text) { const o = {}; norm(text).split(' ').forEach(function (t) { if (t.length >= 3 || /^\d+$/.test(t)) o[stem(t)] = 1; }); return o; }
+
+  const Knowledge = {
+    cfg: null, cache: {}, extraTried: false, extraErrors: [],
+    emit: function (type, extra) { try { window.dispatchEvent(new CustomEvent('voicelayer:knowledge', { detail: Object.assign({ type: type }, extra || {}) })); } catch (e) {} },
+    enabled: function () { return !!this.cfg; },
+    init: function () {
+      const c = CONFIG.knowledge; if (!c) { this.cfg = null; return; }
+      this.cfg = Object.assign({ pages: [], autoNav: false, facts: [], minScore: 0.55 }, typeof c === 'object' ? c : {});
+    },
+    pageTitle: function (t) { return clean(String(t || '').split(/\s[|\u2013\u2014-]\s/)[0]); },
+    /** pull Q&A-shaped passages out of a DOM tree: <details>, <dl>, and "heading + the content under it" */
+    extract: function (root, page, url) {
+      const out = [], self = this;
+      const skip = function (el) { return !!el.closest(SKIP_SEL + ', nav, [role="navigation"], [aria-hidden="true"], [hidden]'); };
+      const push = function (q, a, el, id) {
+        q = clean(q); a = clean(a).slice(0, 900);
+        if (!q || a.length < 20) return;
+        out.push({ q: q, a: a, el: el || null, page: page, url: url || '', id: id || '' });
+      };
+      qsa('details', root).forEach(function (d) {
+        const s = d.querySelector('summary'); if (!s || skip(d)) return;
+        const c = d.cloneNode(true), cs = c.querySelector('summary'); if (cs) cs.remove();
+        push(s.textContent, c.textContent, d, d.id);
+      });
+      qsa('dl', root).forEach(function (dl) {
+        if (skip(dl)) return; let cur = null;
+        Array.prototype.slice.call(dl.children).forEach(function (ch) {
+          if (ch.tagName === 'DT') { if (cur) push(cur.q, cur.a, cur.el, cur.id); cur = { q: ch.textContent, a: '', el: ch, id: ch.id }; }
+          else if (ch.tagName === 'DD' && cur) cur.a += ' ' + ch.textContent;
+        });
+        if (cur) push(cur.q, cur.a, cur.el, cur.id);
+      });
+      qsa('h1,h2,h3,h4,h5', root).forEach(function (h) {
+        if (skip(h) || h.closest('summary, dt')) return;
+        const L = +h.tagName[1]; let a = '', n = h.nextElementSibling;
+        while (n && a.length < 900) {
+          if (/^H[1-6]$/.test(n.tagName) && +n.tagName[1] <= L) break;
+          if (n.querySelector && n.querySelector('h1,h2,h3,h4,h5')) break;           // a wrapper with its own sub-headings: those become their own passages
+          if (!/^(SCRIPT|STYLE|NAV|FORM|BUTTON|SELECT)$/.test(n.tagName) && !skip(n)) a += ' ' + n.textContent;
+          n = n.nextElementSibling;
+        }
+        push(h.textContent, a, h, h.id);
+      });
+      return out;
+    },
+    ownFacts: function () {
+      return (this.cfg.facts || []).filter(function (f) { return f && f.q && f.a; }).map(function (f) {
+        const q = typeof f.q === 'object' ? (f.q[LANG] || f.q.en || '') : f.q, a = typeof f.a === 'object' ? (f.a[LANG] || f.a.en || '') : f.a;
+        return { q: clean(q), a: clean(a), el: null, page: '', url: f.url || '', id: '', owner: true, source: f.source ? (typeof f.source === 'object' ? f.source[LANG] || f.source.en : f.source) : '', kw: clean(f.keywords || '') };
+      });
+    },
+    loadExtra: async function () {
+      if (this.extraTried) return; this.extraTried = true;
+      if (location.protocol === 'file:') return;
+      const urls = (this.cfg.pages || []).slice();
+      if (this.cfg.autoNav && Scanner.map) Scanner.map.nav.forEach(function (n) { if (n.href) urls.push(n.href); });
+      const seen = {}, here = location.href.split('#')[0].replace(/\/$/, '');
+      const list = [];
+      urls.forEach(function (u) { try { const a = new URL(u, location.href); a.hash = ''; const k = a.href.replace(/\/$/, ''); if (a.origin === location.origin && k !== here && !seen[k]) { seen[k] = 1; list.push(a.href); } } catch (e) {} });
+      const self = this;
+      await Promise.all(list.slice(0, 6).map(async function (u) {
+        try {
+          const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null, tm = setTimeout(function () { if (ctl) ctl.abort(); }, 6000);
+          const r = await fetch(u, { credentials: 'same-origin', signal: ctl ? ctl.signal : undefined }); clearTimeout(tm);
+          if (!r.ok || !/html/i.test(r.headers.get('content-type') || '')) throw new Error('status ' + r.status);
+          const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+          self.cache[u] = self.extract(doc.body, self.pageTitle(doc.title) || u, u);
+        } catch (e) { self.extraErrors.push(u); log('knowledge: could not read', u, e && e.message); }
+      }));
+    },
+    passages: function () {
+      let all = this.ownFacts().concat(this.extract(document.body, '', location.href.split('#')[0]));
+      Object.keys(this.cache).forEach(function (k) { all = all.concat(Knowledge.cache[k]); });
+      all.forEach(function (p) { p.qs = stems(p.q + ' ' + (p.kw || '')); p.as = stems(p.q + ' ' + p.a + ' ' + (p.kw || '')); });     // stems depend on the ACTIVE language, so they are computed per question
+      return all;
+    },
+    keywords: function (q) {
+      const out = []; norm(q).split(' ').forEach(function (t) { if (!t || QSTOP.has(t) || STOPWORDS.has(t)) return; if (t.length >= 3 || /^\d+$/.test(t)) { const s = stem(t); if (out.indexOf(s) < 0) out.push(s); } });
+      return out;
+    },
+    pick: function (p, K) {
+      if (p.a.length <= 320) return p.a;
+      const sents = p.a.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [p.a]; let best = 0, bs = -1;
+      sents.forEach(function (s, i) { const st = stems(s); const sc = K.filter(function (k) { return st[k]; }).length; if (sc > bs) { bs = sc; best = i; } });
+      const lo = Math.max(0, Math.min(best, sents.length - 2)), take = sents.slice(lo, lo + 2).join('').trim();
+      return take.length > 420 ? sents[best].trim() : take;
+    },
+    ask: async function (q) {
+      await this.loadExtra();
+      const K = this.keywords(q); if (!K.length) return { found: false, K: K };
+      let best = null;
+      this.passages().forEach(function (p) {
+        const hc = K.filter(function (k) { return p.qs[k]; }).length / K.length, bc = K.filter(function (k) { return p.as[k]; }).length / K.length;
+        const s = 0.6 * hc + 0.4 * bc + (p.owner ? 0.03 : 0);
+        if (!best || s > best.s) best = { p: p, s: s };
+      });
+      if (!best || best.s < this.cfg.minScore) return { found: false, K: K, best: best ? best.s : 0 };
+      const p = best.p;
+      return { found: true, K: K, score: Math.round(best.s * 100) / 100, p: p, text: this.pick(p, K), source: this.sourceOf(p), medical: !p.owner && I.sg.medText.test(norm(p.a)) };
+    },
+    sourceOf: function (p) {
+      if (p.owner && p.source) return p.source;
+      return I.sk.k.srcSec(short(p.q, 70), p.page);
+    }
+  };
+  /** health-ADVICE questions ("should I take…", "do I have…"): never answered from the site, routed to a professional.
+ *  Business questions that merely contain a health word ("can I return the vitamins?") are NOT blocked, unless they are explicit. */
+  function isMedAdvice(t) { const G = I.sg; if (!G) return false; if (G.medExplicit.test(t)) return true; return G.medAdvice.test(t) && G.medTerms.test(t) && !G.medBiz.test(t); }
+
+  /* =========================================================================
    * 8. CONTROLLER — state machine, command execution, and honest receipts
    * ========================================================================= */
   const CART_WORDS = /\b(cart|bag|basket|carrito|cesta|bolsa|carro|canasta)\b/;
@@ -2601,7 +3227,7 @@
       if (q === 'off') store.set(KEYS.off, '1');
       this.mode = store.get(KEYS.off) === '1' ? 'off' : (store.get(KEYS.min) === '1' && CONFIG.allowMinimize ? 'min' : 'on');
       this.muted = store.get(KEYS.speak) === 'off';
-      Companion.init();
+      Companion.init(); Memory.init(); Knowledge.init();
 
       UI.build({
         onOrb: function () { self.touched = true; Voice.unlock(); self.onOrb(); },
@@ -2826,7 +3452,7 @@
       try {
         if (!Voice.supportsRecognition()) UI.addLine('sys', M.noRec);
         if (Companion.enabled()) await Companion.begin(alive);
-        else await this.say(CONFIG.greeting ? greetingText() : I.cp.plainGreet);
+        else await this.say(this.plainOpening());
         if (alive() && UI.open && Voice.supportsRecognition() && !Voice.isListening()) await this.startListening();   // mic opens AFTER the opening line, never over it
       } catch (e) { console.error('[VoiceLayer]', e); }
       this.refresh();
@@ -2904,8 +3530,8 @@
       o = o || {};
       UI.addLine(o.kind || 'bot', text, { verified: o.verified });
       if (o.silent || !this.canSpeak()) { this.refresh(); return Promise.resolve(false); }
-      this.lastSpoken = text;
-      return Voice.speak(text);
+      this.lastSpoken = o.spoken || text;                     // `spoken` lets digits be read one by one while the caption stays readable
+      return Voice.speak(o.spoken || text);
     },
 
     /* ---------- input ---------- */
@@ -2926,7 +3552,7 @@
           if (said.indexOf(t) >= 0 || hit / words.length >= 0.85) { log('ignored echo of own speech:', t); return; }
         }
       }
-      UI.addLine('user', text);
+      UI.addLine('user', Forms.redact(text));
       const quick = parse(text).type;
       if (quick === 'stop') return this.stop(true);        // STOP must be instant — no thinking delay
       this.run(text);
@@ -2943,9 +3569,11 @@
         if (pend && performance.now() < pend.until) {
           const r = this.resolvePending(pend, t);
           if (r) { this.pending = null; intent = r; viaPending = true; }
+          else if (pend.strict) this.pending = null;          // a skill's yes/no question lapses the moment the visitor says anything else
         } else this.pending = null;
         intent = intent || parse(text);
-        try { window.dispatchEvent(new CustomEvent('voicelayer:command', { detail: { text: text, intent: intent.type, arg: intent.arg || '', language: LANG } })); } catch (e) {}
+        if (!viaPending && intent.type === 'unknown') { const sk = parseSkills(text); if (sk) intent = sk; }
+        try { window.dispatchEvent(new CustomEvent('voicelayer:command', { detail: { text: Forms.redact(text), intent: intent.type, arg: intent.type === 'formset' || intent.type === 'mem' ? '' : (intent.arg || ''), language: LANG } })); } catch (e) {}
         log('intent', intent);
         await sleep(CONFIG.thinkingMs);
         if (!alive()) return;
@@ -2953,6 +3581,7 @@
           if (await this.glassCommand(t, alive)) return;
           if (Companion.engaged() && await Companion.intercept(text, intent, tok, alive)) return;
         }
+        if (!viaPending && Knowledge.enabled() && await this.knowledge(text, intent, tok, alive)) return;
         if (!Scanner.map || Date.now() - Scanner.map.scannedAt > 1500) Scanner.scan();
         await this.exec(intent, tok, alive);
       } catch (e) {
@@ -2977,7 +3606,7 @@
     resolvePending: function (pend, t) {
       if (pend.kind === 'confirm') {
         if (I.yes.test(t)) return { type: '_confirmed', run: pend.run };
-        if (I.no.test(t)) return { type: '_declined', what: pend.label };
+        if (I.no.test(t)) return { type: '_declined', what: pend.label, onNo: pend.onNo };
         return null;                          // anything else = a new command; pending is dropped
       }
       if (pend.kind === 'choose') {
@@ -3019,11 +3648,14 @@
         case 'empty': return this.say(M.empty);
         case 'stop': return this.stop(true);
         case 'close': return this.close();
-        case '_declined': UI.clearRings(); return this.say(M.declined(it.what));
+        case '_declined': UI.clearRings(); if (it.onNo) return it.onNo(tok, alive); return this.say(M.declined(it.what));
         case '_badchoice': return this.say(M.badChoice(it.max));
         case '_confirmed': return it.run(tok, alive);
         case '_chosen': UI.clearRings(); return it.option.run(tok, alive);
-        case 'help': return this.say(M.help);
+        case 'help': return this.say(M.help + (CONFIG.forms ? I.sk.help.forms : '') + (Memory.enabled() ? I.sk.help.memory : '') + (Knowledge.enabled() ? I.sk.help.knowledge : ''));
+        case 'formset': return this.cmdFormSet(it, tok, alive);
+        case 'formundo': return this.cmdFormUndo();
+        case 'mem': return this.cmdMem(it, tok, alive);
         case 'about': return this.cmdAbout();
         case 'read': return this.cmdRead(it, tok, alive);
         case 'find': return this.cmdFind(it, tok, alive);
@@ -3345,6 +3977,212 @@
       fire(MouseEvent, 'click', { detail: 1 });
     },
 
+
+    /* ------------------------------------------------------------ skills: opening line */
+    plainOpening: function () {
+      const rt = Memory.ret(), base = CONFIG.greeting ? greetingText() : I.cp.plainGreet;
+      if (rt) return I.sk.m.welcome(rt.name, rt.last) + ' ' + base;
+      if (Memory.enabled() && !Memory.has() && !store.sget('voicelayer.memhint')) { store.sset('voicelayer.memhint', '1'); return base + ' ' + I.sk.m.hint; }
+      return base;
+    },
+    /** ask a yes/no question that lapses on anything but an answer */
+    ask: function (text, label, run, onNo, o) {
+      this.pending = { kind: 'confirm', strict: true, label: label, until: performance.now() + 25000, run: run, onNo: onNo };
+      return this.say(text, o);
+    },
+
+    /* ------------------------------------------------------------ skills: forms */
+    cmdFormSet: async function (it, tok, alive) {
+      const S = I.sk.f;
+      if (!Forms.enabled()) return this.cmdUnknown(it);
+      const cards = Forms.fields();
+      if (!cards.length) return it.soft ? this.cmdUnknown(it) : this.say(S.noFields);
+      if (SENS_FIELD.test(fnorm(it.field)) || SENS_FIELD.test(norm(it.field))) {       // the visitor NAMED a password/payment/ID field: refuse outright, whatever labels this page uses
+        this.receipt({ action: 'fill_field', label: short(it.field, 40), status: 'refused', verification: 'none', detail: 'sensitive field requested by name' });
+        return this.say(S.blocked(short(it.field, 40)));
+      }
+      const hits = Forms.match(cards, it.field);
+      if (!hits.length) {
+        if (it.soft) return this.cmdUnknown(it);
+        const names = uniq(cards.filter(function (c) { return !c.blocked; }).map(function (c) { return c.label; })).slice(0, 5);
+        return this.say(S.noField(it.field, names.length ? andList(names) : ''));
+      }
+      const top = hits[0], close = hits.filter(function (h) { return h.score >= top.score - 0.1; });
+      if (close.length > 1) {
+        const uniqEls = close.filter(function (h, i) { return close.findIndex(function (x) { return x.card.el === h.card.el; }) === i; });
+        if (uniqEls.length > 1) {
+          const opts = uniqEls.slice(0, 5).map(function (h) { return { label: h.card.label, pick: h.card.label, el: h.card.el, run: function (t, a) { return VL.formPrepare(h.card, it.value, t, a); } }; });
+          return this.askChoose(S.which(uniqEls.length, it.field), opts, tok);
+        }
+      }
+      return this.formPrepare(top.card, it.value, tok, alive);
+    },
+    formPrepare: async function (card, rawVal, tok, alive) {
+      const S = I.sk.f, label = card.label;
+      UI.clearRings();
+      if (card.blocked) { this.receipt({ action: 'fill_field', label: label, status: 'refused', verification: 'none', detail: 'sensitive field (' + card.blocked + ')' }); return this.say(S.blocked(label)); }
+      if (card.readonly) return this.say(S.readonly(label));
+      if (/^(checkbox|radio|file|range|color|date)$/.test(card.kind)) return this.say(S.unsupported(label, S.kinds[card.kind] || S.kinds.other));
+      const n = Forms.normalize(card, rawVal);
+      if (n.err) return this.say(S.invalid(label, S.why[n.err] || S.why.pattern));
+      const shown = n.optionText || n.value;
+      const ok = await scrollToEl(card.el, 'center', tok, alive); if (!ok || !alive()) return;
+      UI.showRings([{ getRect: rectOf(card.el) }], 25000);
+      const spoken = Forms.speak(shown, card.kind);
+      return this.ask(S.confirm(label, shown), S.what, function (t, a) { return VL.formApply(card, n, shown, t, a); }, function () { UI.clearRings(); return VL.say(M.declined(S.what)); }, { spoken: S.confirm(label, spoken) });
+    },
+    formApply: async function (card, n, shown, tok, alive) {
+      const S = I.sk.f, label = card.label, el = card.el;
+      const why = Forms.recheck(card);
+      if (why === 'gone') { UI.clearRings(); return this.say(S.gone(label)); }
+      if (why === 'readonly') { UI.clearRings(); return this.say(S.readonly(label)); }
+      if (why) { UI.clearRings(); return this.say(S.blocked(label)); }
+      this._acting = true;
+      try {
+        this.say(S.doing(label));
+        UI.showRings([{ getRect: rectOf(el) }], CONFIG.highlightMs);
+        const proceed = await this.pause(Math.min(CONFIG.preClickDelayMs, 700), alive);                 // a short, cancellable beat: touching the page cancels the change
+        if (!proceed || !alive()) { UI.clearRings(); return this.say(S.stopped); }
+        if (Forms.recheck(card)) { UI.clearRings(); return this.say(S.gone(label)); }
+        const before = el.value;
+        Forms.setValue(el, n.value);
+        await sleep(160);                                                                              // let the page's own handlers (and any framework re-render) finish
+        UI.clearRings();
+        if (!alive()) return;
+        const got = el.tagName === 'SELECT' ? (el.value === n.value ? shown : (el.options[el.selectedIndex] ? clean(el.options[el.selectedIndex].textContent) : '')) : el.value;
+        const same = el.tagName === 'SELECT' ? el.value === n.value : Forms.same(card, n.value, got);
+        if (same) {
+          Forms.last = { el: el, before: before, label: label, kind: card.kind, after: n.value };
+          this.receipt({ action: 'fill_field', label: label, status: 'succeeded', verification: 'read_back', detail: 'the field now holds the requested value' });
+          return this.say(S.done(label, got), { verified: true, spoken: S.done(label, Forms.speak(got, card.kind)) });
+        }
+        this.receipt({ action: 'fill_field', label: label, status: 'unknown', verification: 'none', detail: 'the field does not hold the requested value after entry' });
+        return this.say(S.mismatch(label, got));
+      } finally { this._acting = false; }
+    },
+    cmdFormUndo: async function () {
+      const S = I.sk.f, u = Forms.last;
+      if (!u || !u.el.isConnected) { Forms.last = null; return this.say(S.undoNone); }
+      if (Forms.blockedReason(u.el, Forms.labelsOf(u.el), Forms.kindOf(u.el, Forms.labelsOf(u.el)))) return this.say(S.blocked(u.label));
+      Forms.setValue(u.el, u.before); await sleep(120);
+      const ok = u.el.value === u.before; Forms.last = null;
+      this.receipt({ action: 'undo_fill', label: u.label, status: ok ? 'succeeded' : 'unknown', verification: ok ? 'read_back' : 'none' });
+      return this.say(ok ? S.undone(u.label) : S.undoFail(u.label), { verified: ok });
+    },
+
+    /* ------------------------------------------------------------ skills: memory */
+    cmdMem: async function (it, tok, alive) {
+      const S = I.sk.m;
+      if (!Memory.enabled()) return this.say(S.off);
+      const grantThen = async function (after) {
+        const ok = Memory.grant();
+        if (!ok) { Memory.d = null; if (after && after.sess) { Memory.sessName = after.sess; } return VL.say(S.noStore); }
+        VL.receipt({ action: 'memory_consent', label: 'remember on this device', status: 'succeeded', verification: 'read_back', detail: 'saved and re-read from device storage' });
+        if (after && after.name) { const k = Memory.setName(after.name); return VL.say(k ? S.savedName(after.name) : S.noStore); }
+        if (after && after.fact) { const k = Memory.addFact(after.fact); return VL.say(k ? S.savedFact : S.noStore); }
+        return VL.say(S.consentOk);
+      };
+      switch (it.act) {
+        case 'enable':
+          if (Memory.has() && Memory.d.paused) { Memory.d.paused = false; Memory.write(); return this.say(S.resumed); }
+          if (Memory.has()) return this.say(S.alreadyOn);
+          return this.ask(S.consentAsk, S.that, function () { return grantThen(); });
+        case 'pause':
+          if (!Memory.has()) return this.say(S.nothing);
+          Memory.d.paused = true; Memory.write(); return this.say(S.paused);
+        case 'name': {
+          const v = clean(it.val).replace(/[.!?,;]+$/, '');
+          if (!/^[\p{L}][\p{L}'’.\- ]{0,29}$/u.test(v) || v.split(' ').length > 3 || SENS_TEXT.test(norm(v))) return this.say(S.badName);
+          const nm = v.replace(/(^|[\s-])(\p{L})/gu, function (a, p, c) { return p + c.toUpperCase(); }).replace(/^(\p{Lu})(\p{Lu}+)$/u, function (a, c, r) { return c + r.toLowerCase(); });
+          if (Memory.active()) { const k = Memory.setName(nm); return this.say(k ? S.savedName(nm) : S.noStore); }
+          if (Memory.has() && Memory.d.paused) { Memory.sessName = nm; return this.say(S.sessionName(nm)); }
+          return this.ask(S.consentAskName(nm), S.that, function () { return grantThen({ name: nm, sess: nm }); }, function () { Memory.sessName = nm; return VL.say(S.sessionName(nm)); });
+        }
+        case 'fact': {
+          const v = clean(it.val).replace(/[.!?]+$/, '');
+          if (!v || v.length > 140) return this.say(S.badName);
+          if (SENS_TEXT.test(norm(v)) || /\d{6,}/.test(v.replace(/\D+/g, ' ').replace(/\s/g, ''))) return this.say(S.refuse);
+          if (Memory.active()) { const k = Memory.addFact(v); return this.say(k ? S.savedFact : S.noStore); }
+          if (Memory.has() && Memory.d.paused) return this.say(S.paused);
+          return this.ask(S.consentAskFact, S.that, function () { return grantThen({ fact: v }); });
+        }
+        case 'recall': {
+          if (!Memory.has()) return this.say(S.recallNone);
+          const d = Memory.d, parts = [];
+          if (d.name) parts.push(S.rName(d.name));
+          if (d.visits) parts.push(S.rVisits(d.visits));
+          if (d.pages.length) parts.push(S.rPages(andList(uniq(d.pages.slice(-4).map(function (p) { return '“' + p.t + '”'; })))));
+          if (d.facts.length) parts.push(S.rNotes(d.facts.map(function (f) { return f.t; })));
+          if (!parts.length) return this.say(S.recallNone);
+          return this.say(S.recall(andList(parts)));
+        }
+        case 'forgetname':
+          if (!Memory.has() || !Memory.d.name) return this.say(S.nothing);
+          return this.ask(S.forgetNameAsk, S.that, function () {
+            const ok = Memory.forgetName();
+            VL.receipt({ action: 'forget_name', label: 'name', status: ok ? 'succeeded' : 'unknown', verification: ok ? 'read_back' : 'none' });
+            return VL.say(ok ? S.forgotName : S.forgotFail, { verified: ok });
+          });
+        case 'forget':
+          if (!Memory.has() && !store.get(KEYS.mem) && !Memory.sessName) return this.say(S.nothing);
+          return this.ask(S.forgetAsk, S.that, function () {
+            const ok = Memory.wipe() && !store.get(KEYS.mem);
+            VL.receipt({ action: 'forget_me', label: 'everything remembered', status: ok ? 'succeeded' : 'unknown', verification: ok ? 'read_back' : 'none', detail: ok ? 'device storage re-read: empty' : 'could not confirm' });
+            return VL.say(ok ? S.forgot : S.forgotFail, { verified: ok });
+          });
+      }
+    },
+
+    /* ------------------------------------------------------------ skills: knowledge */
+    knowledge: async function (text, intent, tok, alive) {
+      const G = I.sg, K = I.sk.k, t = norm(text);
+      if (!G || intent.type === 'empty' || intent.type === '_declined') return false;
+      const question = G.q.test(t) || /\?\s*$/.test(String(text));
+      const eligible = intent.type === 'unknown';                                  // never hijack a command the normal grammar already understood ("where is pricing", "go to faq")
+      if (!eligible) return false;
+      if (question && isMedAdvice(t)) {                                           // health ADVICE is never answered from a website
+        let tail = '';
+        const c = rank(goCandidates(), G.contactQ, 0.6)[0];
+        if (c) { this.pending = { kind: 'confirm', strict: true, label: K.that, until: performance.now() + 25000, run: function (a, b) { return VL.goTo(c.item, a, b); } }; tail = K.medicalGo(c.item.label); }
+        Knowledge.emit('medical_routed');
+        await this.say(K.medical + tail); return true;
+      }
+      const res = await Knowledge.ask(text); if (!alive()) return true;
+      if (!res.found || (!question && res.score < 0.75)) {
+        if (!question) return false;                                              // not a question and no strong match: let the normal "didn't understand" path run
+        Knowledge.emit('no_answer');
+        const near = rank(goCandidates(), res.K.join(' '), 0.6)[0];
+        if (near) { this.pending = { kind: 'confirm', strict: true, label: K.that, until: performance.now() + 25000, run: function (a, b) { return VL.goTo(near.item, a, b); } }; await this.say(K.none + K.noneSuggest(near.item.label)); }
+        else await this.say(K.none + K.noneTip);
+        return true;
+      }
+      const p = res.p; Knowledge.emit('answered', { source: p.owner ? 'owner' : (p.page || 'this page') });
+      if (res.medical) { await this.say(K.medText(short(p.q, 60))); return true; }
+      const cut = p.a.length > res.text.length + 25, away = !p.owner && p.url && p.url.split('#')[0] !== location.href.split('#')[0];
+      const src = K.from(res.source);
+      const canGo = (!p.owner && liveEl(p.el)) || away || (p.owner && p.url);
+      const body = res.text.replace(/\s*$/, '');
+      this.receipt({ action: 'answer_from_site', label: short(p.q, 60), status: 'succeeded', verification: 'none', detail: 'answered from ' + (p.owner ? 'owner notes' : 'page text') + '; match ' + res.score });
+      if (canGo && (cut || away)) {
+        this.pending = { kind: 'confirm', strict: true, label: K.that, until: performance.now() + 25000, run: function (a, b) { return VL.knowledgeGo(p, a, b); } };
+        await this.say(body + ' ' + src + ' ' + K.goAsk);
+      } else await this.say(body + ' ' + src);
+      return true;
+    },
+    knowledgeGo: async function (p, tok, alive) {
+      if (liveEl(p.el) && !(p.url && p.url.split('#')[0] !== location.href.split('#')[0])) {
+        const ok = await scrollToEl(p.el, 'top', tok, alive); if (!ok || !alive()) return;
+        UI.showRings([{ getRect: rectOf(p.el) }], CONFIG.highlightMs);
+        return this.say(M.going(short(p.q, 60)));
+      }
+      if (p.url) {
+        this.say(M.taking(short(p.q, 60))); await sleep(500); if (!alive()) return;
+        this.markNavigating();
+        this.receipt({ action: 'navigate', label: short(p.q, 60), status: 'succeeded', verification: 'none', detail: 'page change cannot be verified before unload' });
+        location.href = p.url + (p.id ? '#' + p.id : '');
+      }
+    },
+
     cmdUnknown: function (it) {
       // a near-miss on a nav label / button is still helpful: offer it instead of failing silently
       const gc = rank(goCandidates(), it.arg, 0.7);
@@ -3385,6 +4223,21 @@
       get insights() { return Companion.insights.map(function (x) { return { rule: x.rule, kind: x.kind, text: x.text, offer: x.offer ? x.offer.id : null, rx: x.rx ? x.rx.id : null }; }); },
       get rules() { return Companion.rules ? Companion.rules.map(function (r) { return r.id; }) : []; }
     },
+    memory: {
+      get enabled() { return Memory.enabled(); },
+      get consented() { return Memory.has(); },
+      get data() { return Memory.snapshot(); },
+      forget: function () { return Memory.wipe(); }
+    },
+    knowledge: {
+      get enabled() { return Knowledge.enabled(); },
+      ask: async function (q) { const r = await Knowledge.ask(q); return r.found ? { found: true, text: r.text, source: r.source, score: r.score, medical: r.medical } : { found: false }; },
+      get passages() { return Knowledge.enabled() ? Knowledge.passages().map(function (p) { return { q: p.q, page: p.page || '', owner: !!p.owner }; }) : []; }
+    },
+    forms: {
+      get enabled() { return Forms.enabled(); },
+      fields: function () { return Forms.fields().map(function (c) { return { label: c.label, kind: c.kind, blocked: c.blocked, readonly: c.readonly }; }); }
+    },
     setLanguage: function (c) { return VL.changeLanguage(String(c || '').toLowerCase().split('-')[0], true); },
     get language() { return LANG; },
     get mode() { return VL.mode; },
@@ -3402,6 +4255,8 @@
       hasAnalyser: function () { return !!(UI.wave && UI.wave.analyser); },
       hasOutAnalyser: function () { return !!(UI.wave && UI.wave.outAnalyser); },
       parse: parse,
+      parseSkills: parseSkills,
+      pickVoice: function () { const v = Voice.pickVoice(); return v ? v.name : null; },
       parseLang: function (code, raw) { return (code === 'es' ? parseES : parseEN)(raw); },
       bubble: function () { return VL.maybeBubble(); },
       transport: function () { return Voice._dgTransport; }

@@ -35,3 +35,6 @@ The harness files live outside the web root (`/home/user/vl_test`), not in `publ
 - Screen readers (labels and roles exist; no real assistive-tech run)
 - Legal compliance for any region. Not a legal review.
 - Real user data: all companion tests use demo data
+
+## v0.4 additions
+T39 voice preference (server defaults and env override against real wrangler instances, browser voice ranking, Deepgram request voice). T40 forms. T41 memory. T42 knowledge. T43 integration. Result: glass.mjs 277/277; run.mjs 304/305 (T25 "dismiss hides it" is a known flaky check).

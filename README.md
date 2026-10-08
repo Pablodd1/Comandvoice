@@ -35,3 +35,6 @@ Integration guide: `public/voicelayer/README.md` (2b glass, 2c companion, guardr
 - Verified on mocks only: real Chrome SpeechRecognition accuracy, real Deepgram session, Safari/iOS, low-end phone performance
 - Needed from the owner: `DEEPGRAM_API_KEY` (Member permission), business + region (legal rules), data sources, recommendation policy, hosting for the real API
 - Local run: `npm run build && pm2 start ecosystem.config.cjs` (port 3000)
+
+## VoiceLayer v0.4 skills
+Female voice default (Aura-2 athena/selena, env override), voice form changes, consent-based device memory, site-knowledge answers. See `public/voicelayer/README.md` section 10. Not deployed publicly. Needs `DEEPGRAM_API_KEY` in `.dev.vars` or as a Cloudflare secret.
