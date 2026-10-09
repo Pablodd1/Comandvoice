@@ -356,6 +356,22 @@ button:focus-visible, input:focus-visible {
 .vl-root[data-mode="pending"] .vl-glass, .vl-root[data-mode="off"] .vl-glass, .vl-root[data-mode="min"] .vl-glass, .vl-root[data-mode="killed"] .vl-glass { display: none !important; }
 .vl-root[data-ui="glass"][data-pass="false"] .vl-glass { pointer-events: auto; }          /* passThrough:false → the glass catches clicks */
 
+
+/* ---- DOCK: 'top' — the glass becomes a band pinned to the top of the page.
+   The whole full-height scene is scaled into the band (transform), so every
+   vh-based size inside stays exactly as designed; the site below stays
+   visible and fully usable. ---- */
+.vl-root[data-dock="top"] .vl-glass {
+  inset: 0 0 auto 0; height: var(--vl-dock-h, 42vh); overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(170,200,255,.22), inset 0 1px 0 rgba(255,255,255,.28), 0 18px 50px rgba(2,6,22,.45);
+  border-bottom: 1px solid rgba(170,200,255,.28);
+}
+.vl-root[data-dock="top"] .vl-glass .vl-g-ui {
+  top: 0; height: 100vh; width: 100%;
+  transform: scale(var(--vl-dock-scale, .42)); transform-origin: top center;
+}
+.vl-root[data-dock="top"] .vl-glass .vl-g-pane { inset: 0; }
+
 /* the pane: blur + tint + sheen + a thin lit edge, like a real sheet of glass in front of a monitor */
 .vl-g-pane {
   position: absolute; inset: 0; pointer-events: none;

@@ -55,6 +55,8 @@
       blur: 14,                          // px of backdrop blur (0 = clear glass)
       tint: 0.22,                        // 0..0.6 darkness of the glass
       hue: 215,                          // accent hue 0..360 (blue family by default)
+      dock: 'full',                      // 'full' (cover the page) | 'top' (glass band pinned to the TOP of the page; the site below stays visible and usable)
+      height: 0.42,                      // dock:'top' only — band height as a fraction of the viewport (clamped 0.25..0.6)
       lite: 'auto',                      // 'auto' | true | false  - cheaper rendering on weak devices
       visual: 'line',                    // 'line' (orb + travelling dash-wave under it) | 'radial' (bars around the orb) | 'both'
       flow: 'out',                       // line only: 'out' = voice travels from the centre to both ends | 'right' = travels left to right
@@ -65,6 +67,13 @@
     //   signals: {…}|function|Promise, signalsUrl: '', rules: [], catalog: [], greeting: {en,es}, disclosure: {en,es},
     //   maxInsights: 3, maxAgeHours: 48, strings: {en:{…},es:{…}} }
     companion: null,
+
+    // ---- HOST INTEGRATION (generic; site-specific logic lives in the HOST, not here) -----------------------------
+    emit: { intents: true, transcripts: false }, // dispatch 'voicelayer:intent' CustomEvents on window for host analytics.
+                                                 // NEVER emits transcripts unless the host opts in explicitly.
+    aiAnswer: null,                      // async (question, ctx) => { text } — host-supplied brain for open questions the
+                                         // rule-based companion can't answer. Guardrails still apply: the reply is linted
+                                         // (no diagnose/treat wording), truncated, and attributed to the host AI.
 
     // ---- voice engine ------------------------------------------------------------------------------------------
     provider: 'auto',                    // 'auto' = Deepgram when apiBase answers and has a key, else browser | 'browser' | 'deepgram'
@@ -1198,6 +1207,9 @@
         if (P.repeat.test(t)) { if (this.cur) { await VL.say(this.cur.text); return true; } }
         if (this.stage === 'insights' && (P.next.test(t) || P.skip.test(t))) { UI.hideOffer(); await this.present(this.i + 1, alive); return true; }
       }
+      if (intent.type === 'unknown' && typeof CONFIG.aiAnswer === 'function') {
+        if (await VL.aiAnswerFlow(text, alive)) return true;
+      }
       return false;
     }
   };
@@ -2137,6 +2149,12 @@
         root.style.setProperty('--vl-blur', clamp(Number(CONFIG.glass.blur) || 0, 0, 40) + 'px');
         root.style.setProperty('--vl-tint', String(clamp(Number(CONFIG.glass.tint) || 0, 0, 0.6)));
         root.setAttribute('data-pass', CONFIG.glass.passThrough === false ? 'false' : 'true');
+        if (CONFIG.glass.dock === 'top') {
+          const frac = clamp(Number(CONFIG.glass.height) || 0.42, 0.25, 0.6);
+          root.setAttribute('data-dock', 'top');
+          root.style.setProperty('--vl-dock-h', frac * 100 + 'vh');
+          root.style.setProperty('--vl-dock-scale', String(frac));
+        }
       }
       const GLASS_HTML = !G ? '' :
         '<section class="vl-glass" id="vl-glass" role="dialog" aria-modal="false" data-awake="false" data-mic="off" data-card="false">' +
@@ -3582,6 +3600,9 @@
           if (Companion.engaged() && await Companion.intercept(text, intent, tok, alive)) return;
         }
         if (!viaPending && Knowledge.enabled() && await this.knowledge(text, intent, tok, alive)) return;
+        if (intent.type === 'unknown' && typeof CONFIG.aiAnswer === 'function' && !(CONFIG.mode === 'glass' && Companion.engaged() && this.woke)) {
+          if (await this.aiAnswerFlow(text, alive)) return;
+        }
         if (!Scanner.map || Date.now() - Scanner.map.scannedAt > 1500) Scanner.scan();
         await this.exec(intent, tok, alive);
       } catch (e) {
@@ -3590,6 +3611,32 @@
       } finally {
         if (alive()) this.setBusy(false);
       }
+    },
+
+    /** voice control of the glass itself (works in both languages) */
+    aiAnswerFlow: async function (text, alive) {
+      // Host-supplied brain (CONFIG.aiAnswer): answers open questions the rule
+      // companion can't. Guardrails still apply — the reply is linted against
+      // CP_LINT (no diagnose/treat/directive wording), truncated, attributed
+      // as the host AI, and announced with a 'voicelayer:companion' event so
+      // host analytics can record it.
+      let reply = null;
+      try {
+        const r = await Promise.race([
+          Promise.resolve().then(() => CONFIG.aiAnswer(text, { language: LANG })),
+          new Promise((res) => setTimeout(() => res(null), 12000)),
+        ]);
+        reply = r && typeof r === 'object' ? (r.text || '') : (typeof r === 'string' ? r : '');
+      } catch (e) { log('aiAnswer failed:', e && e.message); }
+      reply = String(reply || '').trim();
+      if (!reply || !alive()) return false;
+      const fallback = LANG === 'es'
+        ? 'Puedo compartir información general, pero para lo personal me limito a tus propios datos. Pregúntame por tus lecturas.'
+        : 'I can share general information here, but for anything personal I stick to your own data — ask me about your readings.';
+      const safe = CP_LINT.test(reply) ? fallback : reply.slice(0, 600);
+      try { window.dispatchEvent(new CustomEvent('voicelayer:companion', { detail: { type: 'ai_answer', chars: safe.length, linted: safe !== reply.slice(0, 600) } })); } catch (e) {}
+      await this.say(safe);
+      return true;
     },
 
     /** voice control of the glass itself (works in both languages) */
