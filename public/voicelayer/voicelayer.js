@@ -1,5 +1,5 @@
 /*!
- * VoiceLayer  (v0.2.0)
+ * VoiceLayer  (v0.5.0)
  * ---------------------------------------------------------------------------
  * A drop-in voice assistant widget. ONE script tag, no dependencies, no build.
  *
@@ -153,7 +153,7 @@
   // opened from disk (file://) a relative API path can't work: use browser voice, make no network calls
   if (location.protocol === 'file:' && !/^https?:/i.test(CONFIG.apiBase)) CONFIG.apiBase = '';
 
-  const VERSION = '0.4.0';
+  const VERSION = '0.5.0';
   const STATES = ['idle', 'listening', 'thinking', 'speaking'];
   const log = function () { if (CONFIG.debug) console.log.apply(console, ['[VoiceLayer]'].concat([].slice.call(arguments))); };
 
@@ -3583,7 +3583,7 @@
       try {
         let intent, viaPending = false;
         const pend = this.pending, t = norm(text);
-        if ((CONFIG.mode === 'glass' || Companion.enabled()) && I.cp.crisisRe.test(t)) { await Companion.crisis(); return; }     // safety first: nothing else runs
+        if (I.cp.crisisRe.test(t)) { await Companion.crisis(); return; }     // safety first: in EVERY mode, before any AI/knowledge routing
         if (pend && performance.now() < pend.until) {
           const r = this.resolvePending(pend, t);
           if (r) { this.pending = null; intent = r; viaPending = true; }
@@ -3591,7 +3591,14 @@
         } else this.pending = null;
         intent = intent || parse(text);
         if (!viaPending && intent.type === 'unknown') { const sk = parseSkills(text); if (sk) intent = sk; }
-        try { window.dispatchEvent(new CustomEvent('voicelayer:command', { detail: { text: Forms.redact(text), intent: intent.type, arg: intent.type === 'formset' || intent.type === 'mem' ? '' : (intent.arg || ''), language: LANG } })); } catch (e) {}
+        try {
+          var emitCfg = CONFIG.emit || { intents: true, transcripts: false };
+          if (emitCfg.intents !== false) {
+            var detail = { intent: intent.type, arg: intent.type === 'formset' || intent.type === 'mem' ? '' : (intent.arg || ''), language: LANG };
+            if (emitCfg.transcripts === true) detail.text = Forms.redact(text);   // transcripts only on explicit host opt-in
+            window.dispatchEvent(new CustomEvent('voicelayer:command', { detail: detail }));
+          }
+        } catch (e) {}
         log('intent', intent);
         await sleep(CONFIG.thinkingMs);
         if (!alive()) return;
@@ -3631,8 +3638,8 @@
       reply = String(reply || '').trim();
       if (!reply || !alive()) return false;
       const fallback = LANG === 'es'
-        ? 'Puedo compartir información general, pero para lo personal me limito a tus propios datos. Pregúntame por tus lecturas.'
-        : 'I can share general information here, but for anything personal I stick to your own data — ask me about your readings.';
+        ? (Companion.enabled() ? 'Puedo compartir información general, pero para lo personal me limito a tus propios datos. Pregúntame por tus lecturas.' : 'Aún no tengo una respuesta para eso aquí.')
+        : (Companion.enabled() ? 'I can share general information here, but for anything personal I stick to your own data — ask me about your readings.' : 'I don't have an answer for that here yet.');
       const safe = CP_LINT.test(reply) ? fallback : reply.slice(0, 600);
       try { window.dispatchEvent(new CustomEvent('voicelayer:companion', { detail: { type: 'ai_answer', chars: safe.length, linted: safe !== reply.slice(0, 600) } })); } catch (e) {}
       await this.say(safe);
@@ -4223,6 +4230,7 @@
         return this.say(M.going(short(p.q, 60)));
       }
       if (p.url) {
+        if (!/^(https?:|\/)/i.test(p.url)) return this.say(M.unknown(short(p.q, 60)));   // same scheme guard as the offer path
         this.say(M.taking(short(p.q, 60))); await sleep(500); if (!alive()) return;
         this.markNavigating();
         this.receipt({ action: 'navigate', label: short(p.q, 60), status: 'succeeded', verification: 'none', detail: 'page change cannot be verified before unload' });
