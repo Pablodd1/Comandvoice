@@ -422,6 +422,49 @@ async function main() {
       `Live session behavior persists in sessionStorage ('voicelayer.behavior.v1')`
     );
 
+    console.log('\n[T58] Executive Daily Briefing: Weather (/api/voice/weather, Temp + Raining/Dry), Calendar, Pending to Take & Pending to Buy');
+    const weatherEndpointRes = await page.evaluate(async () => {
+      const r = await fetch('/api/voice/weather?city=Miami');
+      return r.json();
+    });
+    assert(
+      weatherEndpointRes && weatherEndpointRes.ok === true && typeof weatherEndpointRes.tempF === 'number' && typeof weatherEndpointRes.tempC === 'number' && typeof weatherEndpointRes.raining === 'boolean' && typeof weatherEndpointRes.dry === 'boolean',
+      `GET /api/voice/weather returns live/fallback weather (${weatherEndpointRes && weatherEndpointRes.tempF}°F / ${weatherEndpointRes && weatherEndpointRes.tempC}°C, raining=${weatherEndpointRes && weatherEndpointRes.raining}, dry=${weatherEndpointRes && weatherEndpointRes.dry})`
+    );
+
+    await page.evaluate(() => {
+      window.VoiceLayer.setWeather({ tempF: 78, tempC: 26, raining: false, dry: true, condition: { en: 'sunny', es: 'soleado' } });
+      window.VoiceLayer.setCalendar([
+        { title: 'Weekly review — Keel Performance', time: '15:00', location: 'Zoom' },
+        { title: 'Zone 2 ride — 60 min', time: '18:30', location: 'Key Biscayne loop' }
+      ]);
+      window.VoiceLayer.setToTake([
+        { name: 'Vitamin D3 5000 IU + K2', dose: '1 softgel', time: '08:00', taken: false },
+        { name: 'Magnesium Glycinate 400mg', dose: '400mg', time: '21:30', taken: false }
+      ]);
+      window.VoiceLayer.setToBuy([
+        { name: 'Omega-3 High-EPA 2000mg', daysRemaining: 4, status: 'low' }
+      ]);
+    });
+
+    reply = await runCmd('how is the weather today?');
+    assert(/78°F/i.test(reply) && /sunny/i.test(reply) && /dry/i.test(reply), `"how is the weather today?" reports temp + condition + dry/raining: "${reply}"`);
+
+    reply = await runCmd('what is on my calendar today?');
+    assert(/Weekly review — Keel Performance \(15:00\)/i.test(reply) && /Zone 2 ride/i.test(reply), `"what is on my calendar today?" reports scheduled events: "${reply}"`);
+
+    reply = await runCmd('what do I have pending to take?');
+    assert(/Vitamin D3 5000 IU \+ K2/i.test(reply) && /Magnesium Glycinate 400mg/i.test(reply), `"what do I have pending to take?" reports pending regimen items: "${reply}"`);
+
+    reply = await runCmd('what do I have pending to buy?');
+    assert(/Omega-3 High-EPA 2000mg/i.test(reply) && /4 days left/i.test(reply), `"what do I have pending to buy?" reports low-stock refill items + cart: "${reply}"`);
+
+    reply = await runCmd('give me my daily briefing');
+    assert(
+      /78°F/i.test(reply) && /dry/i.test(reply) && /Weekly review/i.test(reply) && /Vitamin D3/i.test(reply) && /Omega-3/i.test(reply),
+      `"give me my daily briefing" speaks unified greeting + weather (temp & dry/raining) + calendar + pending to take + pending to buy: "${reply}"`
+    );
+
     console.log('\n[T54] Multi-Page Smoke Test (demo.html, demo-account.html, demo-es.html & voicelayer.min.js)');
     const pageErrors = [];
     page.on('pageerror', (err) => pageErrors.push(err.message));

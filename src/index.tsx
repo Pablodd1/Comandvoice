@@ -70,6 +70,11 @@ const ALLOWLISTED_UI_ACTIONS = [
   'spatial_history',
   'profile_who',
   'profile_recommend',
+  'briefing_full',
+  'briefing_weather',
+  'briefing_calendar',
+  'briefing_to_take',
+  'briefing_to_buy',
   'scroll_down',
   'scroll_up',
   'scroll_top',
@@ -231,7 +236,7 @@ app.use('/api/voice/*', async (c, next) => {
       'access-control-allow-headers': 'content-type', 'access-control-max-age': '600', vary: 'origin'
     })
   }
-  const publicPath = c.req.path === '/api/voice/config' || c.req.path === '/api/voice/health' || c.req.path === '/api/voice/demand'
+  const publicPath = c.req.path === '/api/voice/config' || c.req.path === '/api/voice/health' || c.req.path === '/api/voice/demand' || c.req.path === '/api/voice/weather'
   if (!publicPath && !ok) {
     return c.json({ error: 'origin_not_allowed', hint: origin ? 'add this origin to VOICELAYER_ALLOWED_ORIGINS' : 'Origin header required' }, 403)
   }
@@ -288,6 +293,85 @@ app.get('/api/voice/config', (c) => {
   })
 })
 
+/* ------------------------------------------------------------------ GET /api/voice/weather (Live Day / Temp / Raining or Dry Context) */
+function decodeWeatherCode(code: number, rainMm: number, humidity: number) {
+  const isRaining = rainMm > 0 || (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || (code >= 95 && code <= 99)
+  const isSnowing = (code >= 71 && code <= 77) || (code >= 85 && code <= 86)
+  const isDry = !isRaining && !isSnowing && humidity < 45
+  const isHumid = !isRaining && humidity >= 70
+  let condEn = 'clear and dry'
+  let condEs = 'despejado y seco'
+  if (isRaining) {
+    condEn = code >= 95 ? 'stormy with rain' : 'raining'
+    condEs = code >= 95 ? 'tormentoso con lluvia' : 'lloviendo'
+  } else if (isSnowing) {
+    condEn = 'snowing'
+    condEs = 'nevando'
+  } else if (code >= 1 && code <= 3) {
+    condEn = isDry ? 'partly cloudy and dry' : (isHumid ? 'cloudy and humid' : 'partly cloudy and dry')
+    condEs = isDry ? 'parcialmente nublado y seco' : (isHumid ? 'nublado y húmedo' : 'parcialmente nublado y seco')
+  } else {
+    condEn = isHumid ? 'sunny and humid' : 'sunny and dry'
+    condEs = isHumid ? 'soleado y húmedo' : 'soleado y seco'
+  }
+  const moisture = isRaining ? 'raining' : (isDry ? 'dry' : (isHumid ? 'humid' : 'dry'))
+  return { isRaining, isDry, moisture, condEn, condEs }
+}
+
+app.get('/api/voice/weather', async (c) => {
+  c.header('cache-control', 'public, max-age=300')
+  const cf: any = (c.req.raw as any)?.cf || {}
+  const lat = parseFloat(c.req.query('lat') || cf.latitude || '40.7128') || 40.7128
+  const lon = parseFloat(c.req.query('lon') || cf.longitude || '-74.0060') || -74.0060
+  const city = String(c.req.query('city') || cf.city || '').trim()
+  let tempF = 72
+  let tempC = 22
+  let humidity = 42
+  let rainMm = 0
+  let wCode = 1
+  let source = 'fallback'
+
+  try {
+    const ctl = new AbortController()
+    const timer = setTimeout(() => ctl.abort(), 2200)
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,precipitation,rain,weather_code&temperature_unit=fahrenheit`
+    const r = await fetch(url, { signal: ctl.signal })
+    clearTimeout(timer)
+    if (r.ok) {
+      const j: any = await r.json()
+      const cur = j?.current || {}
+      if (typeof cur.temperature_2m === 'number') {
+        tempF = Math.round(cur.temperature_2m)
+        tempC = Math.round((tempF - 32) * 5 / 9)
+        humidity = typeof cur.relative_humidity_2m === 'number' ? Math.round(cur.relative_humidity_2m) : 42
+        rainMm = Number(cur.rain || cur.precipitation || 0)
+        wCode = typeof cur.weather_code === 'number' ? cur.weather_code : 1
+        source = 'open-meteo'
+      }
+    }
+  } catch { /* use fast deterministic fallback */ }
+
+  const decoded = decodeWeatherCode(wCode, rainMm, humidity)
+  const locPartEn = city ? ` in ${city}` : ''
+  const locPartEs = city ? ` en ${city}` : ''
+  return c.json({
+    ok: true,
+    source,
+    city,
+    tempF,
+    tempC,
+    humidity,
+    raining: decoded.isRaining,
+    dry: decoded.isDry,
+    moisture: decoded.moisture,
+    condition: { en: decoded.condEn, es: decoded.condEs },
+    summary: {
+      en: `It’s currently ${tempF}°F (${tempC}°C) and ${decoded.condEn}${locPartEn}.`,
+      es: `Actualmente hace ${tempC}°C (${tempF}°F) y está ${decoded.condEs}${locPartEs}.`
+    }
+  })
+})
+
 /* ------------------------------------------------------------------ POST /api/voice/classify (Jev System One Intent Classifier) */
 function classifyWithJevFallback(utterance: string, state: any): {
   ui_action: { choice: AllowlistedUIAction; confidence: number }
@@ -324,7 +408,22 @@ function classifyWithJevFallback(utterance: string, state: any): {
   let choice: AllowlistedUIAction = 'needs_open_qa'
   let confidence = 0.60
 
-  if (/\b(toss|throw|drop|put|grab|pop|bag|cop|snag|metelo|echalo|ponlo|pilla|ajoute|ajouter|mettre|panier|adicionar|colocar|carrinho|warenkorb|in den korb|aggiungi|carrello)\b/i.test(u) &&
+  if (/\b(brief me|my briefing|morning briefing|daily briefing|how is my day|catch me up|resumen del dia|dame mi resumen|como pinta el dia)\b/i.test(u)) {
+    choice = 'briefing_full'
+    confidence = 0.95
+  } else if (/\b(weather|temperature|temp outside|is it raining|raining or dry|dry outside|how is the day outside|clima|tiempo hace|esta lloviendo|llueve o esta seco|temperatura)\b/i.test(u)) {
+    choice = 'briefing_weather'
+    confidence = 0.94
+  } else if (/\b(calendar|my schedule|appointments|events today|on my agenda|calendario|mi agenda|citas de hoy|que tengo hoy)\b/i.test(u)) {
+    choice = 'briefing_calendar'
+    confidence = 0.94
+  } else if (/\b(pending to take|need to take|supplements to take|what should i take today|my doses|pendiente por tomar|que me toca tomar|suplementos pendientes)\b/i.test(u)) {
+    choice = 'briefing_to_take'
+    confidence = 0.94
+  } else if (/\b(pending to buy|need to buy|need to refill|running low|reorder list|pendiente por comprar|que tengo que comprar|rellenar|agotandose)\b/i.test(u)) {
+    choice = 'briefing_to_buy'
+    confidence = 0.94
+  } else if (/\b(toss|throw|drop|put|grab|pop|bag|cop|snag|metelo|echalo|ponlo|pilla|ajoute|ajouter|mettre|panier|adicionar|colocar|carrinho|warenkorb|in den korb|aggiungi|carrello)\b/i.test(u) &&
       /\b(cart|bag|basket|tote|carrito|cesta|bolsa|panier|carrinho|warenkorb|korb|carrello|this|these|one|two|three|couple|pair)\b/i.test(u)) {
     choice = matchedProd !== '__none__' && matchedProd !== '__deictic__' ? 'cart_add_product' : 'cart_add_deictic'
     confidence = 0.93

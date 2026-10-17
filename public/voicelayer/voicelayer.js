@@ -1359,6 +1359,7 @@
         if (!P.whyRe.test(t) && !P.optRe.test(t)) { VL.pending = null; UI.hideOffer(); }       // anything else lapses the offer
       }
       if (P.optRe.test(t)) { this.optOut = true; store.set(KEYS.cdismissed, '1'); VL.pending = null; UI.hideOffer(); this.emit('opt_out'); await VL.say(P.optOut); return true; }
+      if (intent.type === 'briefing') return false;
       if (P.update.test(t)) { await this.startInsights('', alive); return true; }
       if (this.stage === 'mood' && intent.type === 'unknown') {
         const c = this.classifyMood(t);
@@ -1387,6 +1388,35 @@
    *    Keeps live element references internally; getSiteMap() returns a plain JSON copy for the "agent".
    * ========================================================================= */
   const OUT_OF_STOCK_RE = /\b(out of stock|sold out|unavailable|backorder\w*|agotad[oa]s?|sin stock|no disponible)\b/i;
+
+  function expandNavAliases(baseList) {
+    const out = baseList.slice();
+    const primary = norm(baseList[0] || '');
+    const joined = norm(baseList.join(' '));
+    if (/^(add|anadir|agrega|buy|comprar)\b/.test(primary)) return out;
+    const rules = [
+      [/featured curation|\bcurate\b|\bmarketplace\b/, ['Marketplace', 'Shop', 'Store', 'Catalog', 'Products', 'Featured Curation']],
+      [/micronutrients|#vitamins|\bvitamins\b/, ['Micronutrients', 'Vitamins']],
+      [/daily regimens|\bregimens\b|\bsupplements\b/, ['Daily Regimens', 'Regimens', 'Supplements', 'Medications', 'My Stack']],
+      [/lab telemetry|biomarker|\btrends\b/, ['Lab Telemetry', 'Labs', 'Lab Results', 'Biomarkers', 'Trends']],
+      [/research base|performance research/, ['Research Base', 'Research', 'Clinical Studies']],
+      [/organ longevity|\baosm\b|organ health/, ['Organ Longevity', 'AOSM', 'Profile', 'Organ Health', 'Biological Age']],
+      [/peer network|\bcommunity\b/, ['Peer Network', 'Community', 'Groups']],
+      [/privacy.*consent|\bconsent\b/, ['Privacy and Consent', 'Privacy', 'Consent']],
+      [/physician portal|clinical monitor/, ['Physician Portal', 'Admin', 'Doctor Portal', 'Clinician Portal']],
+      [/\binsights\b|telemetry health/, ['Insights', 'Analytics', 'Operator']],
+      [/^(view cart|open cart|shopping cart|my cart|cart)\b/, ['View Cart', 'Open Cart', 'Cart', 'Shopping Cart', 'Bag', 'My Cart']],
+      [/video visit|telemedicine/, ['Video Visit', 'Telemedicine', 'Telehealth']],
+      [/wellness assistant|cuasarx ai/, ['Wellness Assistant', 'CuasarX AI', 'AI Chat']],
+      [/safety guide|emergency protocol/, ['Safety Guide', 'Emergency Protocol', 'Emergency']]
+    ];
+    for (let i = 0; i < rules.length; i++) {
+      if (rules[i][0].test( primary ) || (i !== 10 && rules[i][0].test(joined))) {
+        for (let j = 0; j < rules[i][1].length; j++) out.push(rules[i][1][j]);
+      }
+    }
+    return out;
+  }
 
   const Scanner = {
     map: null,
@@ -1418,7 +1448,9 @@
         const href = el.getAttribute('href') || '';
         if (/^(javascript:|mailto:|tel:)/i.test(href)) return;
         const isNav = !!el.closest('nav, header, [role="navigation"]');
-        const rec = { text: text, href: el.href, rawHref: href, nav: isNav, el: el };
+        const dataAliases = clean(el.getAttribute('data-vl-aliases') || '').split(',').map(clean).filter(Boolean);
+        const aliases = expandNavAliases([text].concat(dataAliases).filter(Boolean));
+        const rec = { text: text, aliases: aliases, href: el.href, rawHref: href, nav: isNav, el: el };
         m.links.push(rec); if (isNav) m.nav.push(rec);
       });
 
@@ -1429,7 +1461,8 @@
         const ttl = clean(el.getAttribute('title') || '');
         const aria = clean(el.getAttribute('aria-label') || '');
         const inner = clean(el.innerText || el.textContent || '');
-        const aliases = [text, ttl, aria, inner].filter(Boolean);
+        const dataAliases = clean(el.getAttribute('data-vl-aliases') || '').split(',').map(clean).filter(Boolean);
+        const aliases = expandNavAliases([text, ttl, aria, inner].concat(dataAliases).filter(Boolean));
         m.buttons.push({ text: text, aliases: aliases, nav: isNav, el: el, disabled: isDisabled(el) });
       });
 
@@ -1858,7 +1891,8 @@
       if (Companion.cfg) {
         Companion.cfg.signals = s;
         Companion.loaded = false;
-      } else if (s && typeof s === 'object' && !Array.isArray(s)) {
+      }
+      if (s && typeof s === 'object' && !Array.isArray(s)) {
         Companion.data = cpNormalize(s);
       }
       try { window.dispatchEvent(new CustomEvent('voicelayer:signals', { detail: { signals: this.all() } })); } catch (e) {}
@@ -1964,7 +1998,10 @@
     setToBuy: function (items) {
       this._toBuy = Array.isArray(items) ? items.filter(Boolean).map(function (x) {
         if (typeof x === 'string') return { label: clean(x), sku: '' };
-        return { label: clean(loc(x.label || x.name || '')), sku: clean(x.sku || x.id || '') };
+        const base = clean(loc(x.label || x.name || ''));
+        const days = x.daysRemaining != null ? x.daysRemaining : (x.daysLeft != null ? x.daysLeft : null);
+        const suffix = days != null ? (' (' + days + (LANG === 'es' ? ' días restantes)' : ' days left)')) : (x.reason ? ' (' + clean(x.reason) + ')' : '');
+        return { label: base + (base && suffix && base.indexOf('(') < 0 ? suffix : ''), sku: clean(x.sku || x.id || '') };
       }).filter(function (x) { return !!x.label; }) : [];
       return this.toBuy();
     },
@@ -4104,7 +4141,7 @@
       if (hash && !tgt) return;                                     // dead hash link
       const sameDoc = !hash && l.el.href && l.el.href.split('#')[0] === location.href.split('#')[0] && !(l.el.hash);
       cands.push({
-        label: l.text, kind: tgt ? 'section' : 'page', el: tgt || l.el, link: l.el, key: tgt || ('url:' + l.el.href.replace(/#.*$/, '')),
+        label: l.text, aliases: l.aliases || [l.text], kind: tgt ? 'section' : 'page', el: tgt || l.el, link: l.el, key: tgt || ('url:' + l.el.href.replace(/#.*$/, '')),
         bonus: (l.nav ? 0.03 : -0.02) + (sameDoc ? -0.05 : 0)
       });
     });
@@ -4132,7 +4169,7 @@
       out.push({ el: el, text: text, aliases: aliases || [text], ctx: ctx, kind: kind, disabled: isDisabled(el), href: el.href || '', _x: extra });
     };
     m.buttons.forEach(function (b) { add(b.el, b.text, 'button', b.aliases); });
-    m.links.forEach(function (l) { add(l.el, l.text, 'link', [l.text]); });
+    m.links.forEach(function (l) { add(l.el, l.text, 'link', l.aliases || [l.text]); });
     return out;
   }
   function describe(c) { return c.ctx && norm(c.ctx) !== norm(c.text) ? (c.text + ', ' + c.ctx) : c.text; }
@@ -4620,8 +4657,12 @@
       // ---- language + visitor/owner switches (decided BEFORE anything is drawn) ----
       const L = resolveLang(); setLang(L.code, L.full, false);
       const q = (function () { try { return new URLSearchParams(location.search).get('voicelayer'); } catch (e) { return null; } })();
-      if (q === 'on') { store.set(KEYS.off, null); store.set(KEYS.min, null); }
+      if (q === 'on') { store.set(KEYS.off, null); store.set(KEYS.min, null); store.sset(KEYS.gdismiss, null); }
       if (q === 'off') store.set(KEYS.off, '1');
+      if (CONFIG.mode === 'glass' && q !== 'off') {
+        store.sset(KEYS.gdismiss, null);
+        if (CONFIG.glass.autoOpen !== false) { store.set(KEYS.off, null); store.set(KEYS.min, null); }
+      }
       this.mode = store.get(KEYS.off) === '1' ? 'off' : (store.get(KEYS.min) === '1' && CONFIG.allowMinimize ? 'min' : 'on');
       this.muted = store.get(KEYS.speak) === 'off';
       Companion.init(); Memory.init(); Knowledge.init(); Profile.init(); Behavior.init(); Actions.init();
@@ -4644,7 +4685,6 @@
         onMute: function () { self.setMuted(!self.muted); },
         onForce: function (s) { UI.force(s); self.refresh(); }
       });
-      UI.root.setAttribute('data-mode', 'pending');          // hidden until the owner flag + engine are known (≤2.5s, fail-open)
       UI.setMuteUI(this.muted);
       UI.setMicUI(false, Voice.supportsRecognition(), Voice.supportsRecognition() ? '' : UI.T.micUnavailable);
 
@@ -4682,11 +4722,12 @@
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
       window.addEventListener('load', function () { if (self.mode !== 'off') { Scanner.scan(); Behavior.updateViewport(); UI.updateContextChip(); } });
 
-      // ---- owner flag + engine, then reveal ----
+      // ---- reveal immediately so network latency on /api/voice/config never hides the widget ----
+      this.applyMode(this.mode, true);
+      this.afterReveal();
       this.setup().then(function () {
         if (self.killed) return;
-        self.applyMode(self.mode, true);
-        self.afterReveal();
+        self.refresh();
       });
       if (CONFIG.debug) log('debug mode on — use the force-state buttons in the panel');
     },
@@ -4706,6 +4747,7 @@
       if ((CONFIG.provider === 'deepgram' || CONFIG.provider === 'grok') && !Voice.dgOk) log('server voice requested but no Grok/Deepgram key configured → browser voice');
       UI.setEngine(Voice.engine);
       UI.setMicUI(false, Voice.supportsRecognition(), Voice.supportsRecognition() ? '' : UI.T.micUnavailable);
+      try { Briefing.ensureWeather(); } catch (e) {}
       log('voice engine:', Voice.grokOk ? 'grok-voice-3.0' : Voice.engine);
     },
 
@@ -4745,7 +4787,7 @@
     },
     /** bring the assistant back (from minimized or off). openPanel=true also opens it (never starts the mic) */
     restore: function (openPanel) {
-      store.set(KEYS.off, null); store.set(KEYS.min, null);
+      store.set(KEYS.off, null); store.set(KEYS.min, null); store.sset(KEYS.gdismiss, null);
       this.applyMode('on');
       if (openPanel) this.open(false);
       else { try { UI.orb.focus({ preventScroll: true }); } catch (e) {} }
@@ -5119,6 +5161,21 @@
         case 'assistant_help':
           out = { type: 'help', raw: raw };
           break;
+        case 'briefing_full':
+          out = { type: 'briefing', act: 'all', raw: raw };
+          break;
+        case 'briefing_weather':
+          out = { type: 'briefing', act: 'weather', raw: raw };
+          break;
+        case 'briefing_calendar':
+          out = { type: 'briefing', act: 'calendar', raw: raw };
+          break;
+        case 'briefing_to_take':
+          out = { type: 'briefing', act: 'take', raw: raw };
+          break;
+        case 'briefing_to_buy':
+          out = { type: 'briefing', act: 'buy', raw: raw };
+          break;
         default:
           return null;
       }
@@ -5149,7 +5206,7 @@
       return { bypass: false, blocked: false, provider: (jevRes && jevRes.provider) || 'needs_open_qa', intent: it, jev: jevRes };
     },
 
-    /** full spatial + inventory + profile + behavioral context payload for host AI or analytics */
+    /** full spatial + inventory + profile + behavioral + briefing context payload for host AI or analytics */
     contextSnapshot: function () {
       if (!Scanner.map) Scanner.scan();
       Behavior.updateViewport();
@@ -5161,6 +5218,7 @@
         cart: Inventory.cart(),
         profile: Profile.get(),
         signals: Signals.all(),
+        briefing: Briefing.snapshot(),
         companion: Companion.enabled() ? Companion.insights.map(function (x) { return { rule: x.rule, kind: x.kind, text: x.text }; }) : []
       };
     },
@@ -5271,6 +5329,7 @@
         case '_confirmed': return it.run(tok, alive);
         case '_chosen': UI.clearRings(); return it.option.run(tok, alive);
         case 'help': return this.say(M.help + (CONFIG.forms ? I.sk.help.forms : '') + (Memory.enabled() ? I.sk.help.memory : '') + (Knowledge.enabled() ? I.sk.help.knowledge : ''));
+        case 'briefing': return this.cmdBriefing(it, tok, alive);
         case 'formset': return this.cmdFormSet(it, tok, alive);
         case 'formundo': return this.cmdFormUndo();
         case 'mem': return this.cmdMem(it, tok, alive);
@@ -5302,6 +5361,20 @@
         }
         default: return this.cmdUnknown(it);
       }
+    },
+
+    cmdBriefing: async function (it, tok, alive) {
+      await Briefing.ensureWeather();
+      if (!alive()) return;
+      const act = it.act || 'all';
+      let text = '';
+      if (act === 'weather') text = Briefing.weatherText();
+      else if (act === 'calendar') text = Briefing.calendarText();
+      else if (act === 'take') text = Briefing.toTakeText();
+      else if (act === 'buy') text = Briefing.toBuyText();
+      else text = Briefing.fullText();
+      this.receipt({ action: 'briefing_' + act, label: act, status: 'succeeded', verification: 'read_back' });
+      return this.say(text, { verified: true });
     },
 
     cmdAbout: function () {
@@ -5398,7 +5471,14 @@
     cmdGo: async function (it, tok, alive) {
       const q = it.arg;
       const cands = goCandidates();
-      let hits = rank(cands, q, 0.6);
+      const scoreCand = function (c) {
+        let best = score(q, c.label);
+        if (Array.isArray(c.aliases)) c.aliases.forEach(function (al) { best = Math.max(best, score(q, al)); });
+        return best;
+      };
+      let hits = cands.map(function (c) { return { item: c, score: scoreCand(c) + (c.bonus || 0) }; })
+        .filter(function (h) { return h.score >= 0.6; })
+        .sort(function (a, b) { return b.score - a.score; });
       // collapse candidates that lead to the same place (nav link + section + heading all say "Pricing")
       const byKey = new Map();
       hits.forEach(function (h) {
@@ -5418,11 +5498,9 @@
       });
       hits = kept;
       if (!hits.length) {
-        if (it.soft) {                                   // "open X" / "show X": maybe they meant a button or plain text
-          const cc = rank(clickCandidates(), q, 0.7, function (c) { return c.text; });
-          if (it.soft === 'open' && cc.length) return this.cmdClick({ type: 'click', arg: q, raw: it.raw }, tok, alive);
-          if (textMatches(q).length) return this.cmdFind({ type: 'find', arg: q, raw: it.raw }, tok, alive);
-        }
+        const cc = rank(clickCandidates(), q, 0.65, function (c) { return [c.text].concat(c.aliases || []).join(' '); });
+        if (cc.length && (!it.soft || it.soft === 'open')) return this.cmdClick({ type: 'click', arg: q, raw: it.raw }, tok, alive);
+        if (it.soft && textMatches(q).length) return this.cmdFind({ type: 'find', arg: q, raw: it.raw }, tok, alive);
         const alt = rank(cands, q, 0.35).map(function (h) { return h.item.label; });
         const near = uniq(alt).slice(0, 4);
         const fallback = uniq(Scanner.map.nav.map(function (n) { return n.text; }).concat(Scanner.map.headings.filter(function (h) { return h.level === 2; }).map(function (h) { return h.text; }))).slice(0, 5);
@@ -5431,7 +5509,7 @@
       }
       const top = hits[0];
       const close = hits.filter(function (h) { return h.score >= top.score - 0.1; });
-      const clear = close.length === 1 || (top.score >= 0.99 && close.filter(function (h) { return h.score >= 0.99; }).length === 1);
+      const clear = close.length === 1 || (top.score >= 0.96 && close.filter(function (h) { return h.score >= 0.96; }).length === 1);
       if (!clear) {
         const opts = close.slice(0, 4).map(function (h) {
           return { label: h.item.label + (h.item.kind === 'page' ? M.anotherPage : ''), pick: h.item.label, el: h.item.el.isConnected ? h.item.el : h.item.link,
@@ -5450,6 +5528,18 @@
         this.markNavigating();
         this.receipt({ action: 'navigate', label: c.label, status: 'succeeded', verification: 'none', detail: 'page change cannot be verified before unload' });
         this.fireClick(c.link);
+        return;
+      }
+      if (c.kind === 'tab') {
+        this.say(M.going(c.label));
+        const ok = await scrollToEl(c.el, 'center', tok, alive); if (!ok || !alive()) return;
+        UI.showRings([{ getRect: rectOf(c.el) }], 1800);
+        await sleep(Math.min(CONFIG.preClickDelayMs * 0.4, 350)); if (!alive()) return;
+        Behavior.recordClick(c.el);
+        this.fireClick(c.el);
+        await sleep(180);
+        Scanner.scan(); Behavior.updateViewport(); UI.updateContextChip();
+        this.receipt({ action: 'navigate_tab', label: c.label, status: 'succeeded', verification: 'read_back', detail: 'activated SPA tab or control' });
         return;
       }
       const el = c.el;
@@ -5486,7 +5576,11 @@
         }
       }
       const all = clickCandidates();
-      const scoreOf = function (c) { return Math.max(score(q, c.text), c.ctx ? score(q, c.ctx + ' ' + c.text) : 0, c.ctx ? score(q, c.text + ' ' + c.ctx) : 0); };
+      const scoreOf = function (c) {
+        let best = Math.max(score(q, c.text), c.ctx ? score(q, c.ctx + ' ' + c.text) : 0, c.ctx ? score(q, c.text + ' ' + c.ctx) : 0);
+        if (Array.isArray(c.aliases)) c.aliases.forEach(function (al) { best = Math.max(best, score(q, al)); });
+        return best;
+      };
       let hits = all.map(function (c) { return { item: c, score: scoreOf(c) }; }).filter(function (h) { return h.score >= 0.6; })
         .sort(function (a, b) { return b.score - a.score; });
       if (!hits.length) {
@@ -5496,7 +5590,8 @@
       }
       const top = hits[0];
       const close = hits.filter(function (h) { return h.score >= top.score - 0.1; });
-      if (close.length > 1) {
+      const clear = close.length === 1 || (top.score >= 0.96 && close.filter(function (h) { return h.score >= 0.96; }).length === 1);
+      if (!clear) {
         const opts = close.slice(0, 5).map(function (h) {
           const c = h.item;
           return { label: describe(c), pick: c.ctx || c.text, el: c.el, run: function (t, a) { return VL.doClick(c, t, a, { qty: qty }); } };
@@ -5571,6 +5666,7 @@
         mo.disconnect();
         UI.clearRings();
         if (!alive()) return;
+        Scanner.scan(); Behavior.updateViewport(); UI.updateContextChip();
 
         if (isCartAction && before != null && after != null) {
           if (after > before) {
@@ -5634,9 +5730,11 @@
     /* ------------------------------------------------------------ skills: opening line */
     plainOpening: function () {
       const rt = Memory.ret(), base = CONFIG.greeting ? greetingText() : I.cp.plainGreet;
-      if (rt) return I.sk.m.welcome(rt.name, rt.last) + ' ' + base;
-      if (Memory.enabled() && !Memory.has() && !store.sget('voicelayer.memhint')) { store.sset('voicelayer.memhint', '1'); return base + ' ' + I.sk.m.hint; }
-      return base;
+      const bLine = Briefing.summaryLine();
+      const fullBase = bLine ? (base + ' ' + bLine) : base;
+      if (rt) return I.sk.m.welcome(rt.name, rt.last) + ' ' + fullBase;
+      if (Memory.enabled() && !Memory.has() && !store.sget('voicelayer.memhint')) { store.sset('voicelayer.memhint', '1'); return fullBase + ' ' + I.sk.m.hint; }
+      return fullBase;
     },
     /** ask a yes/no question that lapses on anything but an answer */
     ask: function (text, label, run, onNo, o) {
@@ -6050,6 +6148,26 @@
     /** feed / update visitor profile context: VoiceLayer.setProfile({ name, tier, goals, preferences }) */
     setProfile: function (p) { return Profile.set(p); },
     getProfile: function () { return Profile.get(); },
+    /** executive daily briefing setters & getters: weather (temp, raining/dry), calendar, pending to take, pending to buy */
+    setWeather: function (w) { return Briefing.setWeather(w); },
+    setCalendar: function (c) { return Briefing.setCalendar(c); },
+    setToTake: function (t) { return Briefing.setToTake(t); },
+    setToBuy: function (b) { return Briefing.setToBuy(b); },
+    getBriefing: function () { return Briefing.snapshot(); },
+    briefing: {
+      get snapshot() { return Briefing.snapshot(); },
+      get weather() { return Briefing.weather(); },
+      get calendar() { return Briefing.calendar(); },
+      get toTake() { return Briefing.toTake(); },
+      get toBuy() { return Briefing.toBuy(); },
+      get summary() { return Briefing.summaryLine(); },
+      get fullText() { return Briefing.fullText(); },
+      setWeather: function (w) { return Briefing.setWeather(w); },
+      setCalendar: function (c) { return Briefing.setCalendar(c); },
+      setToTake: function (t) { return Briefing.setToTake(t); },
+      setToBuy: function (b) { return Briefing.setToBuy(b); },
+      refreshWeather: function () { return Briefing.ensureWeather(); }
+    },
     /** full spatial + inventory + profile + behavioral context snapshot */
     getContext: function () { return VL.contextSnapshot(); },
     /** query the server AI brain (POST /api/voice/ask) with live page/inventory/profile context */
