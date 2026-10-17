@@ -279,8 +279,13 @@
     return r.bottom > 0 && r.top < (window.innerHeight || document.documentElement.clientHeight) && r.right > 0 && r.left < window.innerWidth;
   }
   function labelOfEl(el) {
-    let t = el.getAttribute('aria-label') || '';
-    if (!t) t = (el.tagName === 'INPUT') ? (el.value || el.getAttribute('title') || '') : (el.innerText || el.textContent || '');
+    let t = el.getAttribute('data-vl-label') || el.getAttribute('aria-label') || '';
+    if (!t) {
+      const txt = clean((el.tagName === 'INPUT') ? (el.value || '') : (el.innerText || el.textContent || ''));
+      const ttl = clean(el.getAttribute('title') || '');
+      if (ttl && (!txt || /^[\d\s$€£¥.,()%+-]+$/.test(txt))) t = ttl;
+      else t = txt || ttl;
+    }
     if (!t) { const img = el.querySelector && el.querySelector('img[alt]'); t = img ? img.alt : (el.getAttribute('title') || ''); }
     return short(t, 90);
   }
@@ -1262,15 +1267,21 @@
     begin: async function (alive) {
       const P = I.cp, cfg = this.cfg;
       await this.load();
+      await Briefing.ensureWeather();
       if (!alive()) return;
-      const name = this.data.name || Memory.name() || cfg.name || '';
+      const name = this.data.name || Profile.get().name || Memory.name() || cfg.name || '';
       UI.setDemo(!!(cfg.demo || this.data.demo));
-      if (this.greeted || store.sget(KEYS.cdone)) { this.greeted = true; this.stage = 'insights'; this.emit('welcome_back'); return VL.say(P.back(name)); }
+      if (this.greeted || store.sget(KEYS.cdone)) {
+        this.greeted = true; this.stage = 'insights'; this.emit('welcome_back');
+        const bLine = Briefing.summaryLine();
+        return VL.say(P.back(name) + (bLine ? ' ' + bLine : ''));
+      }
       this.greeted = true; store.sset(KEYS.cdone, '1');
       const g = cfg.greeting && (typeof cfg.greeting === 'object' ? cfg.greeting[LANG] : cfg.greeting);
       const hello = g ? g.replace(/\{name\}/g, name) : P.hello(P.part[cpDaypart()], name);
       const rt = Memory.ret(), back = rt && rt.last ? ' ' + I.sk.m.lastTime(rt.last) : '';
-      const text = hello + back + (cfg.demo || this.data.demo ? ' ' + P.demoNote : '') + ' ' + (P.moodQ[cfg.preset] || P.moodQ.none);
+      const briefLine = Briefing.summaryLine();
+      const text = hello + back + (briefLine ? ' ' + briefLine : '') + (cfg.demo || this.data.demo ? ' ' + P.demoNote : '') + ' ' + (P.moodQ[cfg.preset] || P.moodQ.none);
       this.stage = 'mood'; this.emit('greeted');
       await VL.say(text);
     },
@@ -1411,10 +1422,15 @@
         m.links.push(rec); if (isNav) m.nav.push(rec);
       });
 
-      qsa('button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], summary').forEach(function (el) {
+      qsa('button, [role="button"], [role="tab"], [role="menuitem"], [data-vl-action], [data-vl-nav], input[type="button"], input[type="submit"], input[type="reset"], summary').forEach(function (el) {
         if (skip(el)) return;
         const text = labelOfEl(el); if (!text) return;
-        m.buttons.push({ text: text, el: el, disabled: isDisabled(el) });
+        const isNav = !!(el.closest('nav, header, [role="navigation"], [role="tablist"]') || el.getAttribute('role') === 'tab' || el.hasAttribute('data-vl-nav'));
+        const ttl = clean(el.getAttribute('title') || '');
+        const aria = clean(el.getAttribute('aria-label') || '');
+        const inner = clean(el.innerText || el.textContent || '');
+        const aliases = [text, ttl, aria, inner].filter(Boolean);
+        m.buttons.push({ text: text, aliases: aliases, nav: isNav, el: el, disabled: isDisabled(el) });
       });
 
       // prices: text nodes that look like a price
@@ -1736,7 +1752,18 @@
       }
       const el = document.querySelector(CONFIG.cartCountSelector);
       const totalEl = document.querySelector('[data-cart-total], #cart-total, .cart-total');
-      if (!el && !totalEl) return { count: null, total: '', items: [], found: false };
+      if (!el && !totalEl) {
+        const btn = document.querySelector('button[title*="Cart" i], button[aria-label*="Cart" i], a[title*="Cart" i], [data-vl-cart]');
+        if (btn) {
+          const txt = clean(btn.textContent || '');
+          const mCount = txt.match(/\b(\d+)\b/);
+          const mPrice = txt.match(PRICE_RE);
+          if (mCount) {
+            return { count: parseInt(mCount[1], 10) || 0, total: mPrice ? clean(mPrice[0]) : '', items: [], found: true };
+          }
+        }
+        return { count: null, total: '', items: [], found: false };
+      }
       const n = el ? parseInt((el.textContent || '').replace(/[^\d-]/g, ''), 10) : 0;
       const tot = totalEl ? clean(totalEl.textContent) : '';
       const domItems = [];
@@ -1820,6 +1847,10 @@
             list.push({ type: clean(t.kind || 'task'), label: clean(loc(t.label || t.kind)), sku: clean(t.id || ''), value: clean(t.due || '') });
           }
         });
+        if (s.weather) Briefing.setWeather(s.weather);
+        if (Array.isArray(s.calendar)) Briefing.setCalendar(s.calendar);
+        if (Array.isArray(s.toTake)) Briefing.setToTake(s.toTake);
+        if (Array.isArray(s.toBuy)) Briefing.setToBuy(s.toBuy);
         this._hostList = list;
       } else {
         this._hostList = [];
@@ -1853,6 +1884,235 @@
         seen[k] = true;
         return true;
       });
+    }
+  };
+
+  /**
+   * Executive Daily Briefing Engine:
+   * Connects to Weather (temperature + raining or dry), Calendar/Schedule, Pending to Take, and Pending to Buy/Refill.
+   */
+  const Briefing = {
+    _weather: null,
+    _weatherFetchedAt: 0,
+    _calendar: [],
+    _toTake: [],
+    _toBuy: [],
+    defaultWeather: function () {
+      return {
+        city: 'Miami',
+        tempF: 78,
+        tempC: 26,
+        humidity: 48,
+        raining: false,
+        dry: true,
+        moisture: 'dry',
+        condition: { en: 'sunny and dry', es: 'soleado y seco' }
+      };
+    },
+    setWeather: function (w) {
+      if (!w || typeof w !== 'object') return this.weather();
+      const d = this.defaultWeather();
+      const tempF = w.tempF != null ? Number(w.tempF) : (w.temp != null ? Number(w.temp) : d.tempF);
+      const tempC = w.tempC != null ? Number(w.tempC) : Math.round(((tempF - 32) * 5) / 9);
+      const raining = w.raining != null ? !!w.raining : /rain|shower|storm|lluv/i.test(String(w.condition && (w.condition.en || w.condition) || ''));
+      const dry = w.dry != null ? !!w.dry : !raining;
+      const condEn = typeof w.condition === 'object' ? (w.condition.en || d.condition.en) : (w.condition || (raining ? 'raining' : (dry ? 'sunny and dry' : 'partly cloudy')));
+      const condEs = typeof w.condition === 'object' ? (w.condition.es || d.condition.es) : (raining ? 'lloviendo' : (dry ? 'soleado y seco' : 'parcialmente nublado'));
+      this._weather = {
+        city: clean(w.city || d.city),
+        tempF: tempF,
+        tempC: tempC,
+        humidity: w.humidity != null ? Number(w.humidity) : d.humidity,
+        raining: raining,
+        dry: dry,
+        moisture: raining ? 'raining' : (dry ? 'dry' : 'humid'),
+        condition: { en: condEn, es: condEs }
+      };
+      this._weatherFetchedAt = Date.now();
+      return this._weather;
+    },
+    ensureWeather: async function () {
+      if (this._weather && Date.now() - this._weatherFetchedAt < 600e3) return this._weather;
+      if (CONFIG.weather && typeof CONFIG.weather === 'object') return this.setWeather(CONFIG.weather);
+      if (CONFIG.apiBase && typeof Net !== 'undefined' && Net.weather) {
+        try {
+          const w = await Net.weather();
+          if (w && w.tempF != null) return this.setWeather(w);
+        } catch (e) {}
+      }
+      if (!this._weather) this._weather = this.defaultWeather();
+      return this._weather;
+    },
+    weather: function () {
+      if (!this._weather && CONFIG.weather && typeof CONFIG.weather === 'object') this.setWeather(CONFIG.weather);
+      return this._weather || this.defaultWeather();
+    },
+    setCalendar: function (items) {
+      this._calendar = Array.isArray(items) ? items.filter(Boolean).map(function (x) {
+        if (typeof x === 'string') return { label: clean(x), time: '' };
+        return { label: clean(loc(x.label || x.title || x.name || '')), time: clean(x.time || x.due || x.at || '') };
+      }).filter(function (x) { return !!x.label; }) : [];
+      return this.calendar();
+    },
+    setToTake: function (items) {
+      this._toTake = Array.isArray(items) ? items.filter(Boolean).map(function (x) {
+        if (typeof x === 'string') return { label: clean(x), time: '' };
+        return { label: clean(loc(x.label || x.name || '')), time: clean(x.time || x.due || '') };
+      }).filter(function (x) { return !!x.label; }) : [];
+      return this.toTake();
+    },
+    setToBuy: function (items) {
+      this._toBuy = Array.isArray(items) ? items.filter(Boolean).map(function (x) {
+        if (typeof x === 'string') return { label: clean(x), sku: '' };
+        return { label: clean(loc(x.label || x.name || '')), sku: clean(x.sku || x.id || '') };
+      }).filter(function (x) { return !!x.label; }) : [];
+      return this.toBuy();
+    },
+    calendar: function () {
+      const out = [];
+      const add = function (lbl, tm) {
+        lbl = clean(lbl); if (!lbl) return;
+        const full = tm && lbl.indexOf(tm) < 0 ? (lbl + ' (' + tm + ')') : lbl;
+        if (!out.some(function (x) { return norm(x.label) === norm(lbl); })) out.push({ label: lbl, time: tm || '', text: full });
+      };
+      this._calendar.forEach(function (c) { add(c.label, c.time); });
+      if (Array.isArray(CONFIG.calendar)) CONFIG.calendar.forEach(function (c) { add(typeof c === 'string' ? c : loc(c.label || c.title), c.time || c.due); });
+      Signals.all().forEach(function (s) {
+        if (/^(calendar|event|appointment|session|meeting|schedule|review)$/i.test(s.type)) add(s.label, s.value);
+      });
+      if (Companion.data && Array.isArray(Companion.data.tasks)) {
+        Companion.data.tasks.forEach(function (t) {
+          if (!t.done && /^(calendar|event|appointment|session|meeting|schedule|review)$/i.test(t.kind)) add(loc(t.label), t.due);
+        });
+      }
+      qsa('[data-vl-calendar]').forEach(function (el) {
+        if (!el.closest(SKIP_SEL)) add(el.getAttribute('data-vl-calendar') || el.textContent, el.getAttribute('data-vl-time') || '');
+      });
+      return out;
+    },
+    toTake: function () {
+      const out = [];
+      const add = function (lbl, tm) {
+        lbl = clean(lbl); if (!lbl) return;
+        const full = tm && lbl.indexOf(tm) < 0 ? (lbl + ' (' + tm + ')') : lbl;
+        if (!out.some(function (x) { return norm(x.label) === norm(lbl); })) out.push({ label: lbl, time: tm || '', text: full });
+      };
+      this._toTake.forEach(function (c) { add(c.label, c.time); });
+      Signals.all().forEach(function (s) {
+        if (/^(supplement|medication|take|regimen|dose|protocol)$/i.test(s.type)) add(s.label, s.value);
+      });
+      if (Companion.data && Array.isArray(Companion.data.tasks)) {
+        Companion.data.tasks.forEach(function (t) {
+          if (!t.done && /^(supplement|medication|take|regimen|dose|protocol)$/i.test(t.kind)) add(loc(t.label), t.due);
+        });
+      }
+      qsa('[data-vl-take]').forEach(function (el) {
+        if (!el.closest(SKIP_SEL)) add(el.getAttribute('data-vl-take') || el.textContent, el.getAttribute('data-vl-time') || '');
+      });
+      return out;
+    },
+    toBuy: function () {
+      const out = [];
+      const add = function (lbl) {
+        lbl = clean(lbl); if (!lbl) return;
+        if (!out.some(function (x) { return norm(x.label) === norm(lbl); })) out.push({ label: lbl, text: lbl });
+      };
+      this._toBuy.forEach(function (c) { add(c.label); });
+      Signals.all().forEach(function (s) {
+        if (/^(refill|buy|reorder|restock|shopping)$/i.test(s.type)) add(s.label);
+      });
+      if (Companion.data && Array.isArray(Companion.data.tasks)) {
+        Companion.data.tasks.forEach(function (t) {
+          if (!t.done && /^(refill|buy|reorder|restock|shopping)$/i.test(t.kind)) add(loc(t.label));
+        });
+      }
+      qsa('[data-vl-buy]').forEach(function (el) {
+        if (!el.closest(SKIP_SEL)) add(el.getAttribute('data-vl-buy') || el.textContent);
+      });
+      const c = Inventory.cart();
+      if (c && c.count > 0) {
+        const itemNames = c.items && c.items.length ? (' (' + c.items.slice(0, 3).map(function (x) { return x.name || x.id; }).join(', ') + ')') : '';
+        const tot = c.total ? (' — ' + c.total) : '';
+        add(LANG === 'es'
+          ? (c.count + (c.count === 1 ? ' artículo en tu carrito' : ' artículos en tu carrito') + itemNames + tot)
+          : (c.count + (c.count === 1 ? ' item in your cart' : ' items in your cart') + itemNames + tot));
+      }
+      return out;
+    },
+    weatherText: function () {
+      const w = this.weather();
+      const cond = loc(w.condition) || (w.raining ? (LANG === 'es' ? 'lloviendo' : 'raining') : (LANG === 'es' ? 'soleado y seco' : 'sunny and dry'));
+      if (LANG === 'es') {
+        const rainStr = w.raining ? 'está lloviendo ahora mismo' : (w.dry ? 'el día está seco, sin lluvia' : 'sin lluvia en este momento');
+        return 'El tiempo hoy' + (w.city ? ' en ' + w.city : '') + ': ' + w.tempC + '°C (' + w.tempF + '°F), ' + cond + ' — ' + rainStr + '.';
+      }
+      const rainStr = w.raining ? 'it is raining right now' : (w.dry ? 'it is dry with no rain' : 'no rain right now');
+      return 'Weather today' + (w.city ? ' in ' + w.city : '') + ': ' + w.tempF + '°F (' + w.tempC + '°C), ' + cond + ' — ' + rainStr + '.';
+    },
+    calendarText: function () {
+      const cal = this.calendar();
+      if (!cal.length) {
+        return LANG === 'es' ? 'Tu calendario de hoy está libre — no hay citas ni eventos pendientes.' : 'Your calendar is clear today — no pending appointments or events.';
+      }
+      const list = andList(cal.slice(0, 4).map(function (x) { return x.text; }));
+      return LANG === 'es'
+        ? ('En tu calendario de hoy tienes ' + cal.length + (cal.length === 1 ? ' evento: ' : ' eventos: ') + list + '.')
+        : ('On your calendar today you have ' + cal.length + (cal.length === 1 ? ' event: ' : ' events: ') + list + '.');
+    },
+    toTakeText: function () {
+      const take = this.toTake();
+      if (!take.length) {
+        return LANG === 'es' ? 'No tienes suplementos ni tomas pendientes por ahora.' : 'You have no pending supplements or doses to take right now.';
+      }
+      const list = andList(take.slice(0, 5).map(function (x) { return x.text; }));
+      return LANG === 'es'
+        ? ('Pendiente por tomar hoy: ' + list + '.')
+        : ('Pending to take today: ' + list + '.');
+    },
+    toBuyText: function () {
+      const buy = this.toBuy();
+      if (!buy.length) {
+        return LANG === 'es' ? 'No tienes artículos pendientes por comprar ni recargas urgentes.' : 'You have no pending items to buy or urgent refills right now.';
+      }
+      const list = andList(buy.slice(0, 5).map(function (x) { return x.text; }));
+      return LANG === 'es'
+        ? ('Pendiente por comprar o recargar: ' + list + '.')
+        : ('Pending to buy or refill: ' + list + '.');
+    },
+    summaryLine: function () {
+      const w = this.weather();
+      const cond = loc(w.condition) || (w.raining ? (LANG === 'es' ? 'lloviendo' : 'raining') : (LANG === 'es' ? 'seco y despejado' : 'sunny and dry'));
+      const cal = this.calendar();
+      const take = this.toTake();
+      const buy = this.toBuy();
+      const parts = [];
+      if (LANG === 'es') {
+        parts.push('Hoy hace ' + w.tempC + '°C (' + w.tempF + '°F), ' + cond + (w.raining ? ' con lluvia.' : ' y sin lluvia.'));
+        if (cal.length) parts.push('En tu calendario: ' + andList(cal.slice(0, 3).map(function (x) { return x.text; })) + '.');
+        if (take.length) parts.push('Pendiente por tomar: ' + andList(take.slice(0, 3).map(function (x) { return x.text; })) + '.');
+        if (buy.length) parts.push('Pendiente por comprar: ' + andList(buy.slice(0, 3).map(function (x) { return x.text; })) + '.');
+      } else {
+        parts.push('It’s ' + w.tempF + '°F (' + w.tempC + '°C), ' + cond + (w.raining ? ' with rain today.' : ' and dry today.'));
+        if (cal.length) parts.push('On your calendar: ' + andList(cal.slice(0, 3).map(function (x) { return x.text; })) + '.');
+        if (take.length) parts.push('Pending to take: ' + andList(take.slice(0, 3).map(function (x) { return x.text; })) + '.');
+        if (buy.length) parts.push('Pending to buy: ' + andList(buy.slice(0, 3).map(function (x) { return x.text; })) + '.');
+      }
+      return parts.join(' ');
+    },
+    fullText: function () {
+      const P = I.cp;
+      const name = (Profile.get && Profile.get().name) || (Companion.data && Companion.data.name) || Memory.name() || (Companion.cfg && Companion.cfg.name) || '';
+      const hello = P && P.hello ? P.hello(P.part[cpDaypart()], name) : (LANG === 'es' ? 'Hola' + (name ? ', ' + name : '') + '.' : 'Hello' + (name ? ', ' + name : '') + '.');
+      return [hello, this.weatherText(), this.calendarText(), this.toTakeText(), this.toBuyText()].join(' ');
+    },
+    snapshot: function () {
+      return {
+        weather: this.weather(),
+        calendar: this.calendar(),
+        toTake: this.toTake(),
+        toBuy: this.toBuy(),
+        summary: this.summaryLine()
+      };
     }
   };
 
@@ -2648,6 +2908,11 @@
       const r = await Net.req('/classify', { method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ utterance: utterance, lang: lang, state: state }) }, 3500);
       if (!r.ok) throw new Error('classify ' + r.status);
+      return r.json();
+    },
+    weather: async function () {
+      const r = await Net.req('/weather', { method: 'GET' }, 2500);
+      if (!r.ok) throw new Error('weather ' + r.status);
       return r.json();
     },
     beacon: function (ev) {
@@ -3718,8 +3983,8 @@
     if ((m = t.match(/^add (.+?) to (?:my |the )?(?:cart|bag|basket)$/))) return { type: 'click', arg: 'add ' + m[1] + ' to cart', raw: raw };
     if ((m = t.match(/^(?:click|press|tap|hit|push|select|choose|activate|trigger)(?: on)?(?: the)? (.+)$/))) return { type: 'click', arg: m[1], raw: raw };
     if ((m = t.match(/^(?:find|search(?: for)?|look for|look up|highlight|where (?:is|are)|locate|spot)(?: me)?(?: the| any| a)? (.+)$/))) return { type: 'find', arg: m[1], raw: raw };
-    if ((m = t.match(/^(go to|goto|go|take me to|navigate to|jump to|scroll to|bring me to|head to|visit|bring up)(?: the)? (.+)$/))) return { type: 'go', arg: m[2], raw: raw };
-    if ((m = t.match(/^(open|show me|show)(?: the)? (.+)$/))) return { type: 'go', arg: m[2], soft: m[1], raw: raw };
+    if ((m = t.match(/^(go to|goto|go|take me to|navigate to|jump to|scroll to|bring me to|head to|visit|bring up|switch to)(?: the)?(?: (?:section|page|tab|view)(?: of| for)?)?(?: the)? (.+)$/))) return { type: 'go', arg: m[2], raw: raw };
+    if ((m = t.match(/^(open|show me|show|view)(?: the| my)? (.+)$/))) return { type: 'go', arg: m[2], soft: /^(open|view)/.test(m[1]) ? 'open' : 'show', raw: raw };
     return { type: 'unknown', arg: t, raw: raw };
   }
 
@@ -3755,10 +4020,10 @@
       return { type: 'click', arg: m[1], raw: raw };
     if ((m = t.match(/^(?:busca|buscar|buscame|busca me|encuentra|encuentrame|encontrar|localiza|localizar|resalta|resaltar|ubica|ubicar|donde (?:esta|estan|hay)|muestrame donde (?:esta|estan))(?: el| la| los| las| un| una| unos| unas| algun| alguna)? (.+)$/)))
       return { type: 'find', arg: m[1], raw: raw };
-    if ((m = t.match(/^(?:ve|ir|vete|llevame|lleva me|navega|salta|desplazate|baja|sube|dirigete|visita|vuelve)(?: (?:a|al|hasta|hacia))?(?: (?:la|el|los|las))?(?: (?:seccion|pagina|apartado|parte|zona)(?: del?)?)?(?: (?:la|el|los|las))? (.+)$/)))
+    if ((m = t.match(/^(?:ve|ir|vete|llevame|lleva me|navega|salta|desplazate|baja|sube|dirigete|visita|vuelve|cambia)(?: (?:a|al|hasta|hacia))?(?: (?:la|el|los|las))?(?: (?:seccion|pagina|apartado|parte|zona|pestana|vista)(?: del?)?)?(?: (?:la|el|los|las))? (.+)$/)))
       return { type: 'go', arg: m[1], raw: raw };
-    if ((m = t.match(/^(abre|abrir|muestrame|muestra|ensename|mostrar|ensenar)(?: me)?(?: el| la| los| las)? (.+)$/)))
-      return { type: 'go', arg: m[2], soft: /^abr/.test(m[1]) ? 'open' : 'show', raw: raw };
+    if ((m = t.match(/^(abre|abrir|muestrame|muestra|ensename|mostrar|ensenar|ver)(?: me)?(?: el| la| los| las| mi| mis)? (.+)$/)))
+      return { type: 'go', arg: m[2], soft: /^(abr|ver)/.test(m[1]) ? 'open' : 'show', raw: raw };
     return { type: 'unknown', arg: t, raw: raw };
   }
 
@@ -3843,17 +4108,31 @@
         bonus: (l.nav ? 0.03 : -0.02) + (sameDoc ? -0.05 : 0)
       });
     });
+    m.buttons.forEach(function (b) {
+      if (b.disabled) return;
+      const bt = norm(b.text);
+      if (/^(add to cart|anadir al carrito|buy now|comprar|remove|eliminar|delete|submit|enviar)$/.test(bt)) return;
+      cands.push({
+        label: b.text,
+        aliases: b.aliases || [b.text],
+        kind: 'tab',
+        el: b.el,
+        link: b.el,
+        key: b.el,
+        bonus: b.nav ? -0.01 : -0.04
+      });
+    });
     return cands.filter(function (c) { return c.el && c.el.isConnected && (c.kind === 'page' ? true : isVisible(c.el) || isVisible(c.el.firstElementChild || c.el)); });
   }
   function clickCandidates() {
     const m = Scanner.map, out = [];
-    const add = function (el, text, kind, extra) {
+    const add = function (el, text, kind, aliases, extra) {
       if (!isVisible(el)) return;
       const ctx = contextOf(el);
-      out.push({ el: el, text: text, ctx: ctx, kind: kind, disabled: isDisabled(el), href: el.href || '', _x: extra });
+      out.push({ el: el, text: text, aliases: aliases || [text], ctx: ctx, kind: kind, disabled: isDisabled(el), href: el.href || '', _x: extra });
     };
-    m.buttons.forEach(function (b) { add(b.el, b.text, 'button'); });
-    m.links.forEach(function (l) { add(l.el, l.text, 'link'); });
+    m.buttons.forEach(function (b) { add(b.el, b.text, 'button', b.aliases); });
+    m.links.forEach(function (l) { add(l.el, l.text, 'link', [l.text]); });
     return out;
   }
   function describe(c) { return c.ctx && norm(c.ctx) !== norm(c.text) ? (c.text + ', ' + c.ctx) : c.text; }
@@ -3892,6 +4171,18 @@
     let tn = sn; for (let i = 0; i < 3; i++) tn = tn.replace(G.pre, '');
     tn = tn.replace(/\s+(please|thanks|thank you|por favor|gracias)$/, '').trim();
     let m;
+    // ---- executive daily briefing: weather, calendar, pending to take, pending to buy ----
+    if (/^(give me (my |the |a )?(daily |morning )?(briefing|update|summary|status)|daily briefing|morning briefing|my briefing|brief me|how is my day( looking)?|whats my status( today)?|dame (mi |el )?(resumen|informe|briefing)( del dia| diario)?|resumen del dia|como esta mi dia|estado del dia)$/.test(tn))
+      return { type: 'briefing', act: 'all', raw: raw };
+    if (/^(how is the (weather|day|temperature)|whats the (weather|temperature)( like)?( today)?|what is the (weather|temperature)( today)?|weather( today| report| forecast)?|temperature( today)?|is it (raining|sunny|dry|cold|hot|warm)( or (dry|raining|sunny))?( today| outside| right now)?|raining or dry|temp or raining|que (tiempo|clima) hace( hoy)?|como esta el (clima|tiempo|dia)( hoy)?|cual es la temperatura( hoy)?|esta (lloviendo|seco|soleado)( o (seco|lloviendo))?( hoy)?|llueve hoy|temperatura de hoy)$/.test(tn))
+      return { type: 'briefing', act: 'weather', raw: raw };
+    if (/^(whats on my (calendar|schedule|agenda)( today)?|what is on my (calendar|schedule|agenda)( today)?|check (my )?(calendar|schedule|agenda)|my (calendar|schedule|agenda)( today| for today)?|what (appointments|meetings|events|sessions) do i have( today)?|do i have any (appointments|meetings|events|sessions)( today)?|que (hay|tengo) en (mi |el )?(calendario|agenda)( hoy)?|mi (calendario|agenda)( de hoy)?|revisa (mi )?(calendario|agenda)|que (citas|eventos|reuniones|sesiones) tengo( hoy)?)$/.test(tn))
+      return { type: 'briefing', act: 'calendar', raw: raw };
+    if (/^(what (is |do i have )?pending to take( today)?|whats pending to take( today)?|what (do i need|do i have|am i supposed) to take( today)?|what (supplements|medications|vitamins|doses|pills|regimen) (do i need|do i have|are pending) to take( today)?|pending to take|my (daily )?(supplements|regimen|doses)( today)?|did i take my (supplements|vitamins|medications)( today)?|que tengo pendiente (por |de |para )?tomar( hoy)?|que me toca tomar( hoy)?|pendiente (por |de )?tomar|mis suplementos( de hoy)?|que suplementos tengo pendientes( hoy)?)$/.test(tn))
+      return { type: 'briefing', act: 'take', raw: raw };
+    if (/^(what (is |do i have )?pending to (buy|order|refill|reorder)|whats pending to (buy|order|refill|reorder)|what do i need to (buy|order|refill|reorder|restock)|what needs (a )?(refill|restock|reorder)|pending to (buy|refill)|my (shopping|refill|reorder) list|low supply( items)?|que tengo pendiente (por |de |para )?(comprar|pedir|recargar)|que necesito (comprar|recargar|pedir)|pendiente (por |de )?(comprar|recargar)|lista de compras|que se me esta acabando)$/.test(tn))
+      return { type: 'briefing', act: 'buy', raw: raw };
+
     // ---- memory ----
     if (G.mem.enable.test(tn)) return { type: 'mem', act: 'enable', raw: raw };
     if (G.mem.pause.test(tn)) return { type: 'mem', act: 'pause', raw: raw };
