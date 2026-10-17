@@ -1,5 +1,5 @@
 <!--
-  VoiceLayer — install snippet (v0.3.0)
+  VoiceLayer — install snippet (v0.6.0)
   ------------------------------------------------------------------
   1. Upload voicelayer.js and voicelayer.css to the SAME folder on your host.
   2. Paste the ONE line below just before </body> on any page (or into your
@@ -22,30 +22,39 @@
       hotkey: 'Alt+Shift+V',              // bring-back / toggle shortcut ('' = none)
       bubble: true,                       // one silent, dismissible hint per session
       enabled: true,                      // false = widget does nothing (static kill switch)
-      debug: false
+      debug: false,
+
+      // v0.6.0 — Live Inventory, User Profile, Behavioral & Spatial Intelligence:
+      inventory: { autoScan: true, items: [], url: null },
+      profile: { name: '', tier: '', goals: [], preferences: [] },
+      behavior: { enabled: true, dwellMs: 1200 },
+      actions: [
+        // { id: 'reorder', label: 'Reorder last purchase', phrases: ['reorder my last order'], confirm: true, handler: (ctx) => 'Reordered!' }
+      ],
+      aiAnswer: async function (question, ctx) {
+        // ctx contains { language, page, spatial, inventory, cart, profile, companion }
+        return null;
+      }
     };
   </script>
 
   Or use data attributes on the script tag:
   <script src="voicelayer.js" data-language="es" data-api="/api/voice" data-corner="bottom-left" defer></script>
 
-  GLASS MODE (full-page frosted glass + voice-reactive circle; the assistant speaks first after ONE tap):
+  GLASS MODE (full-page or top-docked frosted glass + voice-reactive circle; speaks first after ONE tap):
 
   <script>
     window.VoiceLayerConfig = {
       mode: 'glass',
-      glass: { blur: 14, tint: 0.22, hue: 215, lite: 'auto', passThrough: true },
+      glass: { dock: 'top', height: 0.42, blur: 14, tint: 0.22, hue: 215, lite: 'auto', passThrough: true },
       companion: { preset: 'wellness',   // 'wellness' | 'training' | 'coaching' | 'support' | 'none'
                    name: 'Alex', demo: true }   // demo:true = fake data, badged and announced. Remove for real data.
     };
   </script>
   Or: <script src="voicelayer.js" data-mode="glass" data-preset="training" data-name="Alex" data-demo="true" defer></script>
-  Feed real data with companion.signals (object | function | Promise), companion.signalsUrl, or VoiceLayer.setSignals({...}).
-  See README.md sections 2b and 2c (rules, approved catalog, guardrails, events, legal note).
+  Feed real data with VoiceLayer.setSignals({...}), VoiceLayer.setInventory([...]), VoiceLayer.setCart({...}), or VoiceLayer.setProfile({...}).
+  See README.md for full documentation.
 
   A "bring it back" link anywhere on your page (for visitors who turned it off):
   <a href="#" data-voicelayer-open>Voice help</a>
-
-  Local testing: double-click demo.html (Chrome/Edge). Mic permission works best from
-  http://localhost or https:// - see README.md.
 -->

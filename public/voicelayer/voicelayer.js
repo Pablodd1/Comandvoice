@@ -1,15 +1,19 @@
 /*!
- * VoiceLayer  (v0.5.0)
+ * VoiceLayer  (v0.6.0)
  * ---------------------------------------------------------------------------
- * A drop-in voice assistant widget. ONE script tag, no dependencies, no build.
+ * A drop-in voice assistant & spatial intelligence widget. ONE script tag, no dependencies, no build.
  *
  *   <script src="voicelayer.js" defer></script>
  *
  * What it does
- *   • Floats an orb over the page; tap it to talk (mic NEVER starts on its own).
- *   • Scans the page (headings, nav, buttons, prices, products) into a "site map".
- *   • Understands a small set of voice/typed commands in English and Spanish
- *     (go / click / find / read / about / stop / close).
+ *   • Floats an orb or frosted glass layer over the page; tap it to talk (mic NEVER starts on its own).
+ *   • Scans the page (headings, nav, buttons, prices, products, JSON-LD, data-vl-*) into a live "site map".
+ *   • Knows the site's inventory (stock status, prices, categories, cart) and the visitor's profile & goals.
+ *   • Continuously learns where the visitor is living on the page right now (current section, active product,
+ *     modal, scroll depth, SPA route changes) and their session behavior (dwell time, viewed items, affinities)
+ *     to resolve deictic commands ("what am I looking at?", "how much is this?", "add this to cart").
+ *   • Understands voice/typed commands in English and Spanish (go / click / find / read / about / inventory /
+ *     compare / cart / spatial / recommend / form fill / memory / stop / close).
  *   • Voice engines: the browser's own (Web Speech API, free) or Deepgram (Nova-3 listening +
  *     Aura-2 speaking) through YOUR server, so the API key never reaches the page. Automatic fallback.
  *   • Highlights what it is about to touch, then dispatches REAL DOM events so the site's own
@@ -19,12 +23,12 @@
  *   • Visitor is in control: minimize to an edge tab, turn off completely (remembered), bring back
  *     with a link / shortcut / ?voicelayer=on. Owner has a kill switch (config flag or server flag).
  *
- * Rule-based (no LLM), so page text can never be used to "instruct" the assistant.
+ * Rule-based core (no unguarded LLM), so page text can never be used to "instruct" the assistant.
  * See README.md for limits.
  *
  * File layout (search for the ===== banners):
- *   1 CONFIG   2 UTILS   2b LANGUAGE PACKS   3 SITE SCANNER   4 WAVEFORM   5 VOICE I/O (browser + Deepgram)
- *   6 UI   7 COMMANDS   8 CONTROLLER   9 PUBLIC API
+ *   1 CONFIG   2 UTILS   2b LANGUAGE PACKS   3 SITE SCANNER + INVENTORY + PROFILE + BEHAVIOR
+ *   4 WAVEFORM   5 VOICE I/O (browser + Deepgram)   6 UI   7 COMMANDS + SKILLS   8 CONTROLLER   9 PUBLIC API
  */
 (function () {
   'use strict';
@@ -68,12 +72,18 @@
     //   maxInsights: 3, maxAgeHours: 48, strings: {en:{…},es:{…}} }
     companion: null,
 
-    // ---- HOST INTEGRATION (generic; site-specific logic lives in the HOST, not here) -----------------------------
-    emit: { intents: true, transcripts: false }, // dispatch 'voicelayer:intent' CustomEvents on window for host analytics.
+    // ---- INVENTORY, PROFILE, BEHAVIOR & HOST INTEGRATION --------------------------------------------------------
+    inventory: null,                     // optional host catalog [{ id, name, price, value, inStock, stock, category, description, for, url, selector }] — merged with live DOM + JSON-LD scan
+    profile: null,                       // optional visitor profile { name, tier, goals:[], preferences:[] } — merged with Companion signals + consent-gated Memory
+    behavior: true,                      // live spatial & behavioral learning (tracks active section, active product, dwell time, viewed items, clicks, SPA routes)
+    actions: null,                       // optional custom host actions / WebMCP tools { actionName: { label, phrases, confirm, handler } }
+    emit: { intents: true, transcripts: false }, // dispatch 'voicelayer:command' / 'voicelayer:behavior' CustomEvents on window for host analytics.
                                                  // NEVER emits transcripts unless the host opts in explicitly.
-    aiAnswer: null,                      // async (question, ctx) => { text } — host-supplied brain for open questions the
+    aiAnswer: null,                      // async (question, ctx) => { text, action? } — host-supplied brain for open questions the
                                          // rule-based companion can't answer. Guardrails still apply: the reply is linted
                                          // (no diagnose/treat wording), truncated, and attributed to the host AI.
+    jevClassify: true,                   // Jev System One intent classification into allowlisted UI actions after deterministic exact-command bypass.
+    demandBeacon: true,                  // stream anonymized voice demand events (cart_add, goal, compare, unmatched) to apiBase + '/beacon'
 
     // ---- voice engine ------------------------------------------------------------------------------------------
     provider: 'auto',                    // 'auto' = Deepgram when apiBase answers and has a key, else browser | 'browser' | 'deepgram'
@@ -145,15 +155,27 @@
       if (d.provider) CONFIG.provider = d.provider;
       if (d.bubble) CONFIG.bubble = d.bubble !== 'false';
       if (d.mode) CONFIG.mode = d.mode;
+      if (d.behavior) CONFIG.behavior = d.behavior !== 'false';
+      if (d.aiAnswer === 'server' || d.aiAnswer === 'true') CONFIG.aiAnswer = 'server';
+      if (d.demandBeacon) CONFIG.demandBeacon = d.demandBeacon !== 'false';
       if (d.preset || d.name || d.demo) CONFIG.companion = Object.assign({}, CONFIG.companion || {}, d.preset ? { preset: d.preset } : {}, d.name ? { name: d.name } : {}, d.demo ? { demo: d.demo !== 'false' } : {});
     }
   })();
   if (!CONFIG.enabled) return;
+  if (!CONFIG.apiBase && SCRIPT && SCRIPT.src && /^https?:/i.test(SCRIPT.src)) {
+    try {
+      const sUrl = new URL(SCRIPT.src, location.href);
+      if (sUrl.origin !== location.origin || (SCRIPT.dataset && SCRIPT.dataset.api === 'auto')) {
+        CONFIG.apiBase = sUrl.origin + '/api/voice';
+        if (CONFIG.aiAnswer === null) CONFIG.aiAnswer = 'server';
+      }
+    } catch (e) {}
+  }
   CONFIG.apiBase = String(CONFIG.apiBase || '').replace(/\/+$/, '');
   // opened from disk (file://) a relative API path can't work: use browser voice, make no network calls
   if (location.protocol === 'file:' && !/^https?:/i.test(CONFIG.apiBase)) CONFIG.apiBase = '';
 
-  const VERSION = '0.5.0';
+  const VERSION = '0.7.0';
   const STATES = ['idle', 'listening', 'thinking', 'speaking'];
   const log = function () { if (CONFIG.debug) console.log.apply(console, ['[VoiceLayer]'].concat([].slice.call(arguments))); };
 
@@ -170,7 +192,7 @@
     sset: function (k, v) { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch (e) {} }
   };
   const KEYS = { pos: 'voicelayer.orb', speak: 'voicelayer.speak', resume: 'voicelayer.resume', lang: 'voicelayer.lang',
-    off: 'voicelayer.off', min: 'voicelayer.min', bubble: 'voicelayer.bubble', gdismiss: 'voicelayer.gdismiss', cdismissed: 'voicelayer.cdismissed', cdone: 'voicelayer.cdone', mem: 'voicelayer.memory', memVisit: 'voicelayer.memvisit' };
+    off: 'voicelayer.off', min: 'voicelayer.min', bubble: 'voicelayer.bubble', gdismiss: 'voicelayer.gdismiss', cdismissed: 'voicelayer.cdismissed', cdone: 'voicelayer.cdone', mem: 'voicelayer.memory', memVisit: 'voicelayer.memvisit', beh: 'voicelayer.behavior.v1', prof: 'voicelayer.profile.v1' };
 
 
   /** (rest of utils) */
@@ -865,6 +887,131 @@
     medExplicit: /\b(diagnosticame|que me pasa|me estoy muriendo|tengo (una |un )?\w* ?(enfermedad|infeccion|cancer|diabetes|trastorno)|que dosis (debo|tomo)|cuanto (.* )?debo (tomar|inyectar|usar)|debo (tomar|dejar|empezar|aumentar|reducir|saltar|duplicar) (mi |mis |la |el |las |los )?(medicacion|medicamentos?|pastillas?|insulina|dosis|antibioticos?|suplementos?)|tratar mi|curar mi)\b/
   };
 
+  Object.assign(PACKS.en.sk, {
+    inv: {
+      empty: 'I don’t see any products or catalog items on this page right now.',
+      stockAll: function (inN, outN, list) {
+        return 'I see ' + inN + ' item' + (inN === 1 ? '' : 's') + ' in stock' + (outN ? ' and ' + outN + ' out of stock' : '') + ': ' + list + '. Ask me for a price, comparison, or say “add to cart”.';
+      },
+      stockYes: function (n, p, d) { return 'Yes — ' + n + ' is in stock' + (p ? ' at ' + p : '') + (d ? '. ' + d : '.'); },
+      stockNo: function (n, p) { return n + ' is currently out of stock' + (p ? ' (listed at ' + p + ')' : '') + '.'; },
+      priceOf: function (n, p, s, d) { return n + ' is ' + (p || 'listed without a price') + ' (' + (s ? 'in stock' : 'out of stock') + ')' + (d ? '. ' + d : '.'); },
+      under: function (max, cur, list) { return list ? ('Under ' + cur + max + ', I found: ' + list + '.') : ('I didn’t find any items under ' + cur + max + ' on this page.'); },
+      cheapest: function (n, p) { return 'The lowest-priced item here is ' + n + ' at ' + p + '.'; },
+      priciest: function (n, p) { return 'The highest-priced item here is ' + n + ' at ' + p + '.'; },
+      compare: function (a, b) {
+        const d = (a.value && b.value) ? Math.abs(Math.round((a.value - b.value) * 100) / 100) : 0;
+        const cur = (a.price.match(/[$€£¥]/) || ['$'])[0];
+        const diff = d ? (a.value < b.value ? (a.name + ' is ' + cur + d + ' less.') : (b.name + ' is ' + cur + d + ' less.')) : 'Both are the same price.';
+        return a.name + ' is ' + (a.price || 'unpriced') + ' (' + (a.inStock !== false ? 'in stock' : 'out of stock') + ')' + (a.description ? ' — ' + a.description : '') + '. ' +
+          b.name + ' is ' + (b.price || 'unpriced') + ' (' + (b.inStock !== false ? 'in stock' : 'out of stock') + ')' + (b.description ? ' — ' + b.description : '') + '. ' + diff;
+      },
+      compareMiss: function (q) { return 'I need two catalog items on this page to compare' + (q ? ' (couldn’t match “' + q + '”)' : '') + '.'; },
+      noMatch: function (q, list) { return 'I couldn’t find “' + q + '” in the catalog.' + (list ? ' Available items include ' + list + '.' : ''); },
+      cartCount: function (n, total, items) {
+        if (n === 0) return 'Your cart is currently empty.';
+        return 'You have ' + n + (n === 1 ? ' item' : ' items') + ' in your cart' + (items ? ' (' + items + ')' : '') + (total ? ', total ' + total : '') + '.';
+      },
+      cartUnknown: 'I can’t see a cart counter on this page yet.'
+    },
+    sp: {
+      where: function (title, sec, prod, pct, modal) {
+        const parts = ['You’re on ' + (title || 'this page')];
+        if (sec) parts.push('in the “' + sec + '” section');
+        if (modal) parts.push('with the “' + modal + '” dialog open');
+        if (prod) parts.push('looking at ' + prod.name + (prod.price ? ' (' + prod.price + ')' : ''));
+        if (pct != null) parts.push('about ' + pct + '% down the page');
+        return parts.join(', ') + '.';
+      },
+      lookingProd: function (p) {
+        return 'You’re looking at ' + p.name + (p.price ? ', priced at ' + p.price : '') + ' (' + (p.inStock !== false ? 'in stock' : 'out of stock') + ')' + (p.description ? '. ' + p.description : '.') + ' You can say “add this to cart” or ask “is this in stock?”.';
+      },
+      lookingSec: function (sec, snip) { return 'You’re in the “' + sec + '” section' + (snip ? ': ' + snip : '.'); },
+      lookingNone: 'You’re near the top of the page. Scroll or hover over any item and ask “what am I looking at?”.',
+      history: function (prods, secs, interests) {
+        const parts = [];
+        if (prods.length) parts.push('viewed ' + prods.join(', '));
+        if (secs.length) parts.push('explored ' + secs.join(', '));
+        if (interests.length) parts.push('focused on ' + interests.join(', '));
+        return parts.length ? ('So far this visit, you’ve ' + parts.join('; and ') + '.') : 'You just arrived — I’m learning which sections and items you explore as you browse.';
+      }
+    },
+    pr: {
+      goalSaved: function (g, rec) { return 'Got it — I noted your focus on “' + g + '” for this session.' + (rec ? ' Based on this page’s catalog, you might look at ' + rec + '.' : ''); },
+      rec: function (why, list, disc) { return 'Based on ' + why + ', matching in-stock options here are: ' + list + '. ' + disc; },
+      recNone: 'I don’t have enough profile or catalog matches to suggest a specific item yet. Tell me what you’re looking for, like “I’m looking for sleep support”.',
+      who: function (name, goals, interests) {
+        const parts = [];
+        if (name) parts.push('your name is ' + name);
+        if (goals.length) parts.push('your goals include ' + goals.join(', '));
+        if (interests.length) parts.push('you’ve been exploring ' + interests.join(', '));
+        return parts.length ? ('Here’s your active profile context: ' + parts.join('; ') + '.') : 'I don’t have a profile set for you yet. You can say “my name is…” or “my goal is…”.';
+      }
+    }
+  });
+  Object.assign(PACKS.es.sk, {
+    inv: {
+      empty: 'Ahora mismo no veo productos ni artículos del catálogo en esta página.',
+      stockAll: function (inN, outN, list) {
+        return 'Veo ' + inN + ' artículo' + (inN === 1 ? '' : 's') + ' en stock' + (outN ? ' y ' + outN + ' agotado' + (outN === 1 ? '' : 's') : '') + ': ' + list + '. Pregúntame un precio, compara dos productos o di “añade al carrito”.';
+      },
+      stockYes: function (n, p, d) { return 'Sí — ' + n + ' está disponible' + (p ? ' por ' + p : '') + (d ? '. ' + d : '.'); },
+      stockNo: function (n, p) { return n + ' está agotado ahora mismo' + (p ? ' (precio: ' + p + ')' : '') + '.'; },
+      priceOf: function (n, p, s, d) { return n + ' cuesta ' + (p || 'sin precio indicado') + ' (' + (s ? 'en stock' : 'agotado') + ')' + (d ? '. ' + d : '.'); },
+      under: function (max, cur, list) { return list ? ('Por menos de ' + max + ' ' + cur + ', encontré: ' + list + '.') : ('No encontré artículos por debajo de ' + max + ' ' + cur + ' en esta página.'); },
+      cheapest: function (n, p) { return 'El artículo más económico aquí es ' + n + ' por ' + p + '.'; },
+      priciest: function (n, p) { return 'El artículo de mayor precio aquí es ' + n + ' por ' + p + '.'; },
+      compare: function (a, b) {
+        const d = (a.value && b.value) ? Math.abs(Math.round((a.value - b.value) * 100) / 100) : 0;
+        const cur = (a.price.match(/[$€£¥]/) || ['€'])[0];
+        const diff = d ? (a.value < b.value ? (a.name + ' cuesta ' + d + ' ' + cur + ' menos.') : (b.name + ' cuesta ' + d + ' ' + cur + ' menos.')) : 'Ambos tienen el mismo precio.';
+        return a.name + ' cuesta ' + (a.price || 'sin precio') + ' (' + (a.inStock !== false ? 'en stock' : 'agotado') + ')' + (a.description ? ' — ' + a.description : '') + '. ' +
+          b.name + ' cuesta ' + (b.price || 'sin precio') + ' (' + (b.inStock !== false ? 'en stock' : 'agotado') + ')' + (b.description ? ' — ' + b.description : '') + '. ' + diff;
+      },
+      compareMiss: function (q) { return 'Necesito dos artículos del catálogo en esta página para compararlos' + (q ? ' (no encontré “' + q + '”)' : '') + '.'; },
+      noMatch: function (q, list) { return 'No encontré “' + q + '” en el catálogo.' + (list ? ' Los artículos disponibles incluyen ' + list + '.' : ''); },
+      cartCount: function (n, total, items) {
+        if (n === 0) return 'Tu carrito está vacío ahora mismo.';
+        return 'Tienes ' + n + (n === 1 ? ' artículo' : ' artículos') + ' en el carrito' + (items ? ' (' + items + ')' : '') + (total ? ', total ' + total : '') + '.';
+      },
+      cartUnknown: 'Todavía no veo un contador de carrito en esta página.'
+    },
+    sp: {
+      where: function (title, sec, prod, pct, modal) {
+        const parts = ['Estás en ' + (title || 'esta página')];
+        if (sec) parts.push('en la sección “' + sec + '”');
+        if (modal) parts.push('con el cuadro “' + modal + '” abierto');
+        if (prod) parts.push('viendo ' + prod.name + (prod.price ? ' (' + prod.price + ')' : ''));
+        if (pct != null) parts.push('al ' + pct + '% de la página');
+        return parts.join(', ') + '.';
+      },
+      lookingProd: function (p) {
+        return 'Estás viendo ' + p.name + (p.price ? ', con precio de ' + p.price : '') + ' (' + (p.inStock !== false ? 'en stock' : 'agotado') + ')' + (p.description ? '. ' + p.description : '.') + ' Puedes decir “añade esto al carrito” o preguntar “¿cuánto cuesta esto?”.';
+      },
+      lookingSec: function (sec, snip) { return 'Estás en la sección “' + sec + '”' + (snip ? ': ' + snip : '.'); },
+      lookingNone: 'Estás en la parte superior de la página. Desplázate o señala un producto y pregunta “¿qué estoy viendo?”.',
+      history: function (prods, secs, interests) {
+        const parts = [];
+        if (prods.length) parts.push('has visto ' + prods.join(', '));
+        if (secs.length) parts.push('explorado ' + secs.join(', '));
+        if (interests.length) parts.push('te has fijado en ' + interests.join(', '));
+        return parts.length ? ('En esta visita ' + parts.join('; y ') + '.') : 'Acabas de llegar — voy aprendiendo qué secciones y productos exploras mientras navegas.';
+      }
+    },
+    pr: {
+      goalSaved: function (g, rec) { return 'Anotado — tendré en cuenta tu interés en “' + g + '” durante esta sesión.' + (rec ? ' Según el catálogo de esta página, te puede interesar ' + rec + '.' : ''); },
+      rec: function (why, list, disc) { return 'Según ' + why + ', las opciones en stock que encajan aquí son: ' + list + '. ' + disc; },
+      recNone: 'Aún no tengo suficientes datos de perfil o catálogo para sugerir un artículo concreto. Dime qué buscas, por ejemplo “busco apoyo para dormir”.',
+      who: function (name, goals, interests) {
+        const parts = [];
+        if (name) parts.push('te llamas ' + name);
+        if (goals.length) parts.push('tus objetivos incluyen ' + goals.join(', '));
+        if (interests.length) parts.push('has estado explorando ' + interests.join(', '));
+        return parts.length ? ('Este es tu contexto de perfil activo: ' + parts.join('; ') + '.') : 'Todavía no tengo un perfil activo para ti. Puedes decir “me llamo…” o “mi objetivo es…”.';
+      }
+    }
+  });
+
   const CP_LINT = /\b(you (need|must|should|have) (to )?(take|buy|start|stop|use)|you are (deficient|sick|ill)|you have (an? )?(disease|disorder|condition|deficiency|illness)|diagnos\w*|prescrib\w*|tienes que (tomar|comprar|usar)|debes (tomar|comprar|dejar|usar)|estas (enferm[oa]|deficiente)|tienes (una |un )?(enfermedad|deficiencia|trastorno)|diagnostic\w*|recet\w*)\b/i;
   const CP_RULES = {
     wellness: [
@@ -1185,7 +1332,16 @@
           UI.showOffer(it, this.disclosure(), true);
           try { window.dispatchEvent(new CustomEvent('voicelayer:offer', { detail: { id: it.id, name: loc(it.name), url: it.url || '', rule: pend.ins.rule } })); } catch (e) {}
           await VL.say(P.offerYes(loc(it.name)));
-          if (it.url && /^(https?:|\/)/i.test(it.url) && alive()) { await sleep(900); if (alive()) location.href = it.url; }
+          if (it.url && /^(https?:|\/|#)/i.test(it.url) && alive()) {
+            await sleep(900);
+            if (alive()) {
+              if (it.url.charAt(0) === '#') {
+                const target = document.getElementById(it.url.slice(1));
+                if (target) await scrollToEl(target, 'top', tok, alive);
+                else location.hash = it.url;
+              } else location.href = it.url;
+            }
+          }
           return true;
         }
         if (I.no.test(t) || P.skip.test(t)) { VL.pending = null; UI.hideOffer(); await VL.say(P.offerNo); return true; }
@@ -1194,9 +1350,13 @@
       if (P.optRe.test(t)) { this.optOut = true; store.set(KEYS.cdismissed, '1'); VL.pending = null; UI.hideOffer(); this.emit('opt_out'); await VL.say(P.optOut); return true; }
       if (P.update.test(t)) { await this.startInsights('', alive); return true; }
       if (this.stage === 'mood' && intent.type === 'unknown') {
-        const c = this.classifyMood(t); this.mood = c.mood; this.emit('mood', { mood: c.mood });
-        const ack = P.moodAck[c.mood] + (c.sore ? P.moodExtra.sore : '') + (c.sick ? P.moodExtra.sick : '');
-        await this.startInsights(ack, alive); return true;
+        const c = this.classifyMood(t);
+        const isQuestion = (I.sg && I.sg.q && I.sg.q.test(t)) || /\?\s*$/.test(String(text));
+        if (c.mood !== 'unknown' || c.sore || c.sick || !isQuestion) {
+          this.mood = c.mood; this.emit('mood', { mood: c.mood });
+          const ack = P.moodAck[c.mood] + (c.sore ? P.moodExtra.sore : '') + (c.sick ? P.moodExtra.sick : '');
+          await this.startInsights(ack, alive); return true;
+        }
       }
       if (this.stage === 'insights' || this.stage === 'done') {
         if (P.whyRe.test(t)) {
@@ -1207,9 +1367,6 @@
         if (P.repeat.test(t)) { if (this.cur) { await VL.say(this.cur.text); return true; } }
         if (this.stage === 'insights' && (P.next.test(t) || P.skip.test(t))) { UI.hideOffer(); await this.present(this.i + 1, alive); return true; }
       }
-      if (intent.type === 'unknown' && typeof CONFIG.aiAnswer === 'function') {
-        if (await VL.aiAnswerFlow(text, alive)) return true;
-      }
       return false;
     }
   };
@@ -1218,6 +1375,8 @@
    * 3. SITE SCANNER — builds the "site map" the assistant reasons over.
    *    Keeps live element references internally; getSiteMap() returns a plain JSON copy for the "agent".
    * ========================================================================= */
+  const OUT_OF_STOCK_RE = /\b(out of stock|sold out|unavailable|backorder\w*|agotad[oa]s?|sin stock|no disponible)\b/i;
+
   const Scanner = {
     map: null,
     _timer: null,
@@ -1272,6 +1431,36 @@
         m.prices.push({ text: clean(mm[0]), value: parseMoney(mm[0]), el: n.parentElement });
       }
 
+      // helper to enrich a DOM product card
+      const buildDomProduct = function (a, nameText, priceText, priceVal) {
+        const ds = a.dataset || {};
+        const id = ds.productId || ds.sku || ds.id || a.id || norm(nameText).replace(/\s+/g, '-');
+        const cta = a.querySelector('button, [role="button"], input[type="submit"], input[type="button"], a[href]');
+        const cardText = clean(a.innerText || a.textContent || '');
+        let inStock = true;
+        if (ds.inStock != null) inStock = ds.inStock !== 'false' && ds.inStock !== '0';
+        else if (ds.stock != null) inStock = Number(ds.stock) > 0 || ds.stock === 'true' || ds.stock === 'in_stock';
+        else if (OUT_OF_STOCK_RE.test(cardText) || (cta && isDisabled(cta) && OUT_OF_STOCK_RE.test(labelOfEl(cta)))) inStock = false;
+        const descEl = a.querySelector('p, [data-product-description], .desc, .description');
+        const desc = ds.description || (descEl ? short(clean(descEl.textContent), 160) : '');
+        const cat = ds.category || ds.productCategory || '';
+        const tags = (ds.for || ds.tags || '').split(/[,;|]+/).map(clean).filter(Boolean);
+        const cur = (String(priceText || '').match(/[$€£¥]/) || [LANG === 'es' ? '€' : '$'])[0];
+        return {
+          id: id,
+          name: short(clean(nameText), 80),
+          price: priceText || '',
+          value: priceVal || 0,
+          currency: cur,
+          inStock: inStock,
+          category: cat,
+          description: desc,
+          for: tags,
+          el: a,
+          ctaEl: cta || null
+        };
+      };
+
       // products: for each price, walk up to the smallest ancestor that holds exactly ONE heading.
       // That ancestor is the product card; its first price is the current price (a second, struck-through
       // "was" price in the same card is ignored). Stops if the ancestor would hold several headings.
@@ -1282,16 +1471,76 @@
           const hs = qsa('h2,h3,h4,h5,[data-product-name]', a).filter(function (h) { return !h.closest(SKIP_SEL); });
           if (hs.length > 1) break;                                       // grew past a single product
           if (hs.length === 1) {
-            const actionable = !!a.querySelector('button, a[href], input[type="submit"], input[type="button"], [role="button"], [itemtype*="Product"]') || /product|item|card/i.test(a.className + ' ' + (a.getAttribute('itemtype') || ''));
-            if (actionable && !seen.has(a) && !m.products.some(function (q) { return q.el.contains(a) || a.contains(q.el); })) {
+            const actionable = !!a.querySelector('button, a[href], input[type="submit"], input[type="button"], [role="button"], [itemtype*="Product"]') || /product|item|card/i.test(a.className + ' ' + (a.getAttribute('itemtype') || '')) || a.hasAttribute('data-product-id') || a.hasAttribute('data-sku');
+            if (actionable && !seen.has(a) && !m.products.some(function (q) { return q.el && (q.el.contains(a) || a.contains(q.el)); })) {
               seen.add(a);
               const first = m.prices.find(function (x) { return a.contains(x.el); }) || p;
-              m.products.push({ name: short(clean(hs[0].textContent), 80), price: first.text, value: first.value, el: a });
+              const nm = hs[0].getAttribute('data-product-name') || hs[0].textContent;
+              m.products.push(buildDomProduct(a, nm, first.text, first.value));
             }
             break;
           }
           a = a.parentElement; depth++;
         }
+      });
+
+      // explicit [data-product-id] / [data-vl-product] cards that may not have matched the price walker
+      qsa('[data-product-id], [data-vl-product], [itemtype*="schema.org/Product"]').forEach(function (a) {
+        if (skip(a) || seen.has(a) || m.products.some(function (q) { return q.el && (q.el.contains(a) || a.contains(q.el)); })) return;
+        const h = a.querySelector('h2,h3,h4,h5,[data-product-name],[itemprop="name"]');
+        const nm = (a.dataset && a.dataset.productName) || (h ? h.textContent : '');
+        if (!clean(nm)) return;
+        const pr = m.prices.find(function (x) { return a.contains(x.el); });
+        const dPrice = (a.dataset && a.dataset.price) || (pr ? pr.text : '');
+        seen.add(a);
+        m.products.push(buildDomProduct(a, nm, dPrice, pr ? pr.value : parseMoney(dPrice)));
+      });
+
+      // Schema.org JSON-LD Product / ItemList extraction (merges into m.products if not already present)
+      qsa('script[type="application/ld+json"]').forEach(function (sc) {
+        try {
+          const raw = JSON.parse(sc.textContent || 'null');
+          const nodes = [];
+          const collect = function (x) {
+            if (!x || typeof x !== 'object') return;
+            if (Array.isArray(x)) { x.forEach(collect); return; }
+            if (x['@graph']) collect(x['@graph']);
+            if (x['@type'] === 'Product') nodes.push(x);
+            else if (x['@type'] === 'ItemList' && Array.isArray(x.itemListElement)) x.itemListElement.forEach(function (it) { collect(it.item || it); });
+          };
+          collect(raw);
+          nodes.forEach(function (nd) {
+            const nm = clean(nd.name || ''); if (!nm) return;
+            const offer = Array.isArray(nd.offers) ? nd.offers[0] : (nd.offers || {});
+            const val = parseFloat(offer.price || nd.price || 0) || 0;
+            const curCode = offer.priceCurrency || 'USD';
+            const sym = curCode === 'EUR' ? '€' : curCode === 'GBP' ? '£' : '$';
+            const prTxt = val ? (sym + val) : '';
+            const avail = String(offer.availability || '');
+            const inStock = avail ? !/OutOfStock|SoldOut|Discontinued/i.test(avail) : true;
+            const existing = m.products.find(function (p) { return norm(p.name) === norm(nm); });
+            if (existing) {
+              if (!existing.description && nd.description) existing.description = short(clean(nd.description), 160);
+              if (!existing.category && nd.category) existing.category = clean(nd.category);
+              if (offer.availability) existing.inStock = inStock;
+              if (nd.sku && !existing.sku) existing.id = String(nd.sku);
+            } else {
+              m.products.push({
+                id: String(nd.sku || nd.productID || norm(nm).replace(/\s+/g, '-')),
+                name: short(nm, 80),
+                price: prTxt,
+                value: val,
+                currency: sym,
+                inStock: inStock,
+                category: clean(nd.category || ''),
+                description: short(clean(nd.description || ''), 160),
+                for: [],
+                el: null,
+                ctaEl: null
+              });
+            }
+          });
+        } catch (e) {}
       });
 
       // anchors: elements with an id that look like sections (lets "go to pricing" work for <section id="pricing">)
@@ -1303,6 +1552,7 @@
 
       m.ms = Math.round((performance.now() - t0) * 10) / 10;
       this.map = m;
+      if (typeof Behavior !== 'undefined' && Behavior.enabled()) Behavior.onScan(m);
       try { window.dispatchEvent(new CustomEvent('voicelayer:sitemap', { detail: this.json() })); } catch (e) { /* old browsers */ }
       log('site scanned in', m.ms, 'ms', { headings: m.headings.length, links: m.links.length, buttons: m.buttons.length, products: m.products.length });
       return m;
@@ -1312,7 +1562,7 @@
     json: function () {
       const m = this.map || this.scan();
       const strip = function (arr, keys) {
-        return arr.map(function (o) { const r = {}; keys.forEach(function (k) { r[k] = o[k]; }); return r; });
+        return arr.map(function (o) { const r = {}; keys.forEach(function (k) { if (o[k] !== undefined) r[k] = o[k]; }); return r; });
       };
       return {
         url: m.url, title: m.title, description: m.description, lang: m.lang, scannedAt: m.scannedAt,
@@ -1320,7 +1570,7 @@
         nav: strip(m.nav, ['text', 'href']),
         buttons: m.buttons.map(function (b) { return { text: b.text, context: contextOf(b.el), disabled: b.disabled }; }),
         prices: strip(m.prices, ['text', 'value']),
-        products: strip(m.products, ['name', 'price', 'value'])
+        products: strip(m.products, ['id', 'name', 'price', 'value', 'inStock', 'category', 'description'])
       };
     },
 
@@ -1343,8 +1593,9 @@
 
   /** best human context for a control: its product name, else the nearest heading above/around it */
   function contextOf(el) {
+    if (!el) return '';
     const m = Scanner.map;
-    if (m) for (let i = 0; i < m.products.length; i++) if (m.products[i].el.contains(el)) return m.products[i].name;
+    if (m) for (let i = 0; i < m.products.length; i++) if (m.products[i].el && m.products[i].el.contains(el)) return m.products[i].name;
     let a = el.parentElement, d = 0;
     while (a && a !== document.body && d < 5) {
       const h = a.querySelector('h1,h2,h3,h4');
@@ -1353,6 +1604,704 @@
     }
     return '';
   }
+
+  /* =========================================================================
+   * 3b. INVENTORY, PROFILE, BEHAVIOR & SPATIAL LEARNING + CUSTOM ACTIONS
+   * ========================================================================= */
+  const Inventory = {
+    _hostItems: null,
+    _cartOverride: null,
+    set: function (items) {
+      this._hostItems = Array.isArray(items) ? items.slice() : null;
+      try { window.dispatchEvent(new CustomEvent('voicelayer:inventory', { detail: { count: this.items().length } })); } catch (e) {}
+      return this.items();
+    },
+    setCart: function (c) {
+      this._cartOverride = c && typeof c === 'object' ? Object.assign({}, c) : null;
+      return this.cart();
+    },
+    /** unified catalog: merges DOM-scanned products + CONFIG.inventory + Companion.cfg.catalog */
+    items: function () {
+      const m = Scanner.map || Scanner.scan();
+      const list = [];
+      const addOrMerge = function (raw, fromDom) {
+        if (!raw) return;
+        const nm = clean(loc(raw.name) || '');
+        if (!nm) return;
+        const prStr = raw.price != null ? String(raw.price) : '';
+        const val = raw.value != null && isFinite(Number(raw.value)) ? Number(raw.value) : parseMoney(prStr);
+        const cur = raw.currency || (prStr.match(/[$€£¥]/) || [LANG === 'es' ? '€' : '$'])[0];
+        const fmtP = prStr ? (PRICE_RE.test(prStr) ? prStr : (cur + val)) : (val ? (cur + val) : '');
+        const inStock = raw.inStock !== undefined ? !!raw.inStock : (raw.stock !== undefined ? Number(raw.stock) > 0 : true);
+        const desc = clean(loc(raw.description || raw.desc || ''));
+        const cat = clean(loc(raw.category || ''));
+        const tags = Array.isArray(raw.for) ? raw.for.slice() : (raw.for ? String(raw.for).split(/[,;|]+/).map(clean).filter(Boolean) : []);
+        let el = fromDom ? raw.el : null;
+        if (!el && raw.selector) { try { el = document.querySelector(raw.selector); } catch (e) {} }
+        const existing = list.find(function (x) {
+          return (raw.id && x.id && String(raw.id) === String(x.id)) || norm(x.name) === norm(nm);
+        });
+        if (existing) {
+          if (raw.id) existing.id = String(raw.id);
+          if (fmtP && !existing.price) existing.price = fmtP;
+          if (val && !existing.value) existing.value = val;
+          if (raw.inStock !== undefined || raw.stock !== undefined) existing.inStock = inStock;
+          if (raw.stock !== undefined) existing.stock = raw.stock;
+          if (desc) existing.description = desc;
+          if (cat) existing.category = cat;
+          if (tags.length) existing.for = uniq(existing.for.concat(tags));
+          if (raw.url) existing.url = raw.url;
+          if (raw.rx !== undefined) existing.rx = !!raw.rx;
+          if (raw.approved !== undefined) existing.approved = !!raw.approved;
+          if (el && !existing.el) existing.el = el;
+          if (raw.ctaEl && !existing.ctaEl) existing.ctaEl = raw.ctaEl;
+        } else {
+          list.push({
+            id: String(raw.id || norm(nm).replace(/\s+/g, '-')),
+            name: nm,
+            price: fmtP,
+            value: val,
+            currency: cur,
+            inStock: inStock,
+            stock: raw.stock !== undefined ? raw.stock : null,
+            category: cat,
+            description: desc,
+            for: tags,
+            url: raw.url || '',
+            rx: !!raw.rx,
+            approved: raw.approved !== false,
+            el: el || null,
+            ctaEl: raw.ctaEl || null
+          });
+        }
+      };
+      (m.products || []).forEach(function (p) { addOrMerge(p, true); });
+      const hostList = this._hostItems || (Array.isArray(CONFIG.inventory) ? CONFIG.inventory : []);
+      hostList.forEach(function (p) { addOrMerge(p, false); });
+      if (Companion.cfg && Array.isArray(Companion.cfg.catalog)) {
+        Companion.cfg.catalog.forEach(function (p) { addOrMerge(p, false); });
+      }
+      return list;
+    },
+    json: function () {
+      return this.items().map(function (it) {
+        return {
+          id: it.id, name: it.name, price: it.price, value: it.value, currency: it.currency,
+          inStock: it.inStock, stock: it.stock, category: it.category, description: it.description,
+          for: it.for, url: it.url, rx: it.rx
+        };
+      });
+    },
+    find: function (q) {
+      const nq = norm(q); if (!nq) return null;
+      if (/^(this|this one|this item|this product|it|esto|este|esta|este producto|este articulo)$/.test(nq)) {
+        const d = Behavior.deicticProduct();
+        if (d) return d;
+      }
+      const all = this.items();
+      const hits = rank(all, q, 0.52, function (it) { return it.name + ' ' + it.category + ' ' + (it.for || []).join(' '); });
+      return hits.length ? hits[0].item : null;
+    },
+    query: function (filter) {
+      filter = filter || {};
+      let list = this.items();
+      if (filter.inStockOnly) list = list.filter(function (x) { return x.inStock !== false && !x.rx; });
+      if (filter.maxPrice != null && isFinite(filter.maxPrice)) list = list.filter(function (x) { return x.value > 0 && x.value <= filter.maxPrice; });
+      if (filter.minPrice != null && isFinite(filter.minPrice)) list = list.filter(function (x) { return x.value >= filter.minPrice; });
+      if (filter.category) {
+        const nc = norm(filter.category);
+        list = list.filter(function (x) { return norm(x.category + ' ' + (x.for || []).join(' ') + ' ' + x.description + ' ' + x.name).indexOf(nc) >= 0; });
+      }
+      if (filter.q) {
+        const hits = rank(list, filter.q, 0.45, function (it) { return it.name + ' ' + it.category + ' ' + it.description + ' ' + (it.for || []).join(' '); });
+        list = hits.map(function (h) { return h.item; });
+      }
+      if (filter.sort === 'price_asc') list = list.slice().sort(function (a, b) { return (a.value || Infinity) - (b.value || Infinity); });
+      if (filter.sort === 'price_desc') list = list.slice().sort(function (a, b) { return (b.value || 0) - (a.value || 0); });
+      return list;
+    },
+    compare: function (qA, qB) {
+      const a = this.find(qA), b = this.find(qB);
+      if (!a || !b || a.id === b.id) return null;
+      return { a: a, b: b };
+    },
+    cart: function () {
+      if (this._cartOverride) {
+        return {
+          count: Number(this._cartOverride.count || 0),
+          total: this._cartOverride.total || '',
+          items: Array.isArray(this._cartOverride.items) ? this._cartOverride.items.slice() : [],
+          found: true
+        };
+      }
+      const el = document.querySelector(CONFIG.cartCountSelector);
+      const totalEl = document.querySelector('[data-cart-total], #cart-total, .cart-total');
+      if (!el && !totalEl) return { count: null, total: '', items: [], found: false };
+      const n = el ? parseInt((el.textContent || '').replace(/[^\d-]/g, ''), 10) : 0;
+      const tot = totalEl ? clean(totalEl.textContent) : '';
+      const domItems = [];
+      qsa('#cart-lines li, [data-cart-items] li, .cart-items li, .cart-item').forEach(function (li) {
+        if (li.closest(SKIP_SEL)) return;
+        const txt = clean(li.textContent || '');
+        if (!txt) return;
+        const nm = clean(txt.split(/\s+[—–-]\s+|\s+\$|\s+€/)[0]);
+        if (nm) domItems.push({ name: short(nm, 60) });
+      });
+      return { count: isNaN(n) ? 0 : n, total: tot, items: domItems, found: true };
+    },
+    recommend: function (topic) {
+      const items = this.items().filter(function (x) { return x.inStock !== false && !x.rx && x.approved !== false; });
+      if (!items.length) return { items: [], reason: '' };
+      const prof = Profile.get();
+      const terms = [];
+      let reason = '';
+      if (topic) {
+        terms.push(norm(topic));
+        reason = '“' + clean(topic) + '”';
+      } else {
+        if (prof.goals && prof.goals.length) {
+          prof.goals.forEach(function (g) { terms.push(norm(g)); });
+          reason = (LANG === 'es' ? 'tus objetivos (' : 'your goals (') + prof.goals.slice(0, 3).join(', ') + ')';
+        }
+        if (Companion.enabled() && Companion.insights && Companion.insights.length) {
+          Companion.insights.forEach(function (ins) { if (ins.offer && ins.offer.name) terms.push(norm(loc(ins.offer.name))); });
+          if (!reason) reason = LANG === 'es' ? 'tus señales actuales' : 'your current signals';
+        }
+        const ints = Behavior.topInterests();
+        if (ints.length) {
+          ints.forEach(function (k) { terms.push(norm(k)); });
+          if (!reason) reason = (LANG === 'es' ? 'lo que has estado viendo (' : 'what you’ve been exploring (') + ints.slice(0, 2).join(', ') + ')';
+        }
+      }
+      if (!terms.length) {
+        return { items: items.slice(0, 3), reason: LANG === 'es' ? 'los artículos destacados en stock' : 'featured in-stock items on this page' };
+      }
+      const scored = items.map(function (it) {
+        const hay = norm(it.name + ' ' + it.category + ' ' + it.description + ' ' + (it.for || []).join(' '));
+        let sc = 0;
+        terms.forEach(function (t) {
+          if (!t) return;
+          if (hay.indexOf(t) >= 0) sc += 2;
+          else sc += score(t, hay);
+        });
+        return { item: it, score: sc };
+      }).filter(function (x) { return x.score > 0.35; }).sort(function (a, b) { return b.score - a.score; });
+      if (!scored.length) return { items: items.slice(0, 2), reason: LANG === 'es' ? 'el catálogo disponible en esta página' : 'this page’s available catalog' };
+      return { items: scored.slice(0, 3).map(function (x) { return x.item; }), reason: reason };
+    }
+  };
+
+  const Signals = {
+    _hostList: [],
+    set: function (s) {
+      if (Array.isArray(s)) {
+        this._hostList = s.filter(Boolean).map(function (item) {
+          return {
+            type: clean(item.type || item.kind || 'signal'),
+            label: clean(item.label || item.text || ''),
+            sku: clean(item.sku || item.productId || item.id || ''),
+            value: item.value != null ? String(item.value) : ''
+          };
+        }).filter(function (x) { return !!x.label; });
+      } else if (s && typeof s === 'object') {
+        const list = [];
+        const mm = s.metrics || {};
+        Object.keys(mm).forEach(function (k) {
+          const m = mm[k];
+          if (m != null) {
+            const v = typeof m === 'object' ? m.value : m;
+            const u = typeof m === 'object' ? loc(m.unit || '') : '';
+            const lbl = typeof m === 'object' && m.label ? loc(m.label) : k.replace(/_/g, ' ');
+            list.push({ type: 'metric', label: clean(lbl + ': ' + v + (u ? ' ' + u : '')), sku: k, value: String(v) });
+          }
+        });
+        (Array.isArray(s.tasks) ? s.tasks : []).forEach(function (t) {
+          if (t && (t.label || t.kind)) {
+            list.push({ type: clean(t.kind || 'task'), label: clean(loc(t.label || t.kind)), sku: clean(t.id || ''), value: clean(t.due || '') });
+          }
+        });
+        this._hostList = list;
+      } else {
+        this._hostList = [];
+      }
+      if (Companion.cfg) {
+        Companion.cfg.signals = s;
+        Companion.loaded = false;
+      } else if (s && typeof s === 'object' && !Array.isArray(s)) {
+        Companion.data = cpNormalize(s);
+      }
+      try { window.dispatchEvent(new CustomEvent('voicelayer:signals', { detail: { signals: this.all() } })); } catch (e) {}
+      return this.all();
+    },
+    scanDOM: function () {
+      const domSignals = [];
+      qsa('[data-vl-signal]').forEach(function (el) {
+        if (el.closest(SKIP_SEL)) return;
+        const type = clean(el.getAttribute('data-vl-signal') || 'signal');
+        const label = clean(el.getAttribute('data-vl-label') || el.textContent || '');
+        const sku = clean(el.getAttribute('data-vl-sku') || el.getAttribute('data-product-id') || '');
+        if (label) domSignals.push({ type: type, label: short(label, 120), sku: sku });
+      });
+      return domSignals;
+    },
+    all: function () {
+      const combined = [].concat(this._hostList || [], this.scanDOM());
+      const seen = {};
+      return combined.filter(function (x) {
+        const k = (x.type || '') + ':' + (x.label || '') + ':' + (x.sku || '');
+        if (seen[k]) return false;
+        seen[k] = true;
+        return true;
+      });
+    }
+  };
+
+  const Profile = {
+    _custom: null,
+    _sessionGoals: [],
+    init: function () {
+      let saved = null;
+      try { saved = JSON.parse(store.get(KEYS.prof) || 'null'); } catch (e) { saved = null; }
+      const base = (saved && typeof saved === 'object') ? saved : {};
+      const cfg = (CONFIG.profile && typeof CONFIG.profile === 'object') ? CONFIG.profile : {};
+      this._custom = Object.assign({}, base, cfg);
+      if (Array.isArray(base.sessionGoals)) {
+        const self = this;
+        base.sessionGoals.forEach(function (g) {
+          if (g && self._sessionGoals.indexOf(g) < 0) self._sessionGoals.push(g);
+        });
+      }
+    },
+    persist: function () {
+      try {
+        const c = this._custom || {};
+        const safeName = (c.name && !SENS_TEXT.test(norm(c.name))) ? clean(c.name).slice(0, 40) : '';
+        const safeTier = clean(c.tier || c.memberTier || '').slice(0, 30);
+        const rawGoals = [].concat(c.goals || [], c.goal ? [c.goal] : [], this._sessionGoals);
+        const safeGoals = uniq(rawGoals.map(function (g) { return clean(g); }).filter(function (g) { return g && g.length <= 80 && !SENS_TEXT.test(norm(g)); })).slice(0, 12);
+        const safePrefs = uniq((Array.isArray(c.preferences) ? c.preferences : []).map(function (p) { return clean(p); }).filter(function (p) { return p && p.length <= 80 && !SENS_TEXT.test(norm(p)); })).slice(0, 12);
+        store.set(KEYS.prof, JSON.stringify({
+          name: safeName,
+          tier: safeTier,
+          goals: safeGoals,
+          preferences: safePrefs,
+          sessionGoals: this._sessionGoals.slice(0, 10),
+          updatedAt: Date.now()
+        }));
+      } catch (e) {}
+    },
+    wipe: function () {
+      this._custom = {};
+      this._sessionGoals = [];
+      store.set(KEYS.prof, null);
+    },
+    set: function (p) {
+      if (!p || typeof p !== 'object') return this.get();
+      const prevGoals = (this._custom && Array.isArray(this._custom.goals)) ? this._custom.goals : [];
+      const nextGoals = uniq([].concat(prevGoals, Array.isArray(p.goals) ? p.goals : [], p.goal ? [p.goal] : []));
+      this._custom = Object.assign({}, this._custom || {}, p, {
+        tier: clean(p.tier || p.memberTier || (this._custom && (this._custom.tier || this._custom.memberTier)) || ''),
+        goals: nextGoals
+      });
+      this.persist();
+      try { window.dispatchEvent(new CustomEvent('voicelayer:profile', { detail: this.get() })); } catch (e) {}
+      return this.get();
+    },
+    addGoal: function (g) {
+      g = clean(g).replace(/[.!?,;]+$/, '');
+      if (!g || g.length > 80 || SENS_TEXT.test(norm(g))) return '';
+      if (this._sessionGoals.indexOf(g) < 0) this._sessionGoals.push(g);
+      this.persist();
+      return g;
+    },
+    get: function () {
+      const c = this._custom || (CONFIG.profile && typeof CONFIG.profile === 'object' ? CONFIG.profile : {}) || {};
+      const memName = Memory.enabled() ? Memory.name() : '';
+      const compName = (Companion.data && Companion.data.name) || (Companion.cfg && Companion.cfg.name) || '';
+      const name = clean(c.name || memName || compName || '');
+      const goals = uniq([].concat(c.goals || [], c.goal ? [c.goal] : [], c.preferences || [], this._sessionGoals).map(function (x) { return clean(x); }).filter(Boolean));
+      const metrics = (Companion.data && Companion.data.metrics) ? Object.keys(Companion.data.metrics) : [];
+      const sigs = Signals.all();
+      sigs.forEach(function (s) { if (s.sku && metrics.indexOf(s.sku) < 0) metrics.push(s.sku); });
+      const visits = (Memory.has() && Memory.d && Memory.d.visits) ? Memory.d.visits : 1;
+      const tierVal = clean(c.tier || c.memberTier || '');
+      return {
+        name: name,
+        tier: tierVal,
+        memberTier: tierVal,
+        goals: goals,
+        preferences: Array.isArray(c.preferences) ? c.preferences.slice() : [],
+        metricsAvailable: metrics,
+        signals: sigs,
+        visits: visits,
+        interests: Behavior.topInterests()
+      };
+    }
+  };
+
+  const Behavior = {
+    active: false,
+    startedAt: Date.now(),
+    currentSection: '',
+    sectionEnteredAt: Date.now(),
+    sectionDwell: {},
+    activeProductId: '',
+    activeProductName: '',
+    hoveredProductId: '',
+    viewedProducts: {},
+    activeModal: '',
+    scrollDepthPct: 0,
+    maxScrollDepthPct: 0,
+    clicks: [],
+    searches: [],
+    navTrail: [],
+    _bound: false,
+    _prodEnteredAt: 0,
+
+    enabled: function () { return CONFIG.behavior !== false; },
+
+    init: function () {
+      if (!this.enabled() || this._bound) return;
+      this._bound = true; this.active = true;
+      const self = this;
+      try {
+        const saved = JSON.parse(store.sget(KEYS.beh) || 'null');
+        if (saved && typeof saved === 'object') {
+          this.sectionDwell = saved.sectionDwell || {};
+          this.viewedProducts = saved.viewedProducts || {};
+          this.navTrail = Array.isArray(saved.navTrail) ? saved.navTrail.slice(-12) : [];
+          this.searches = Array.isArray(saved.searches) ? saved.searches.slice(-10) : [];
+        }
+      } catch (e) {}
+      this.recordRoute(location.pathname + location.hash);
+
+      // scroll & viewport observer (throttled)
+      let scrollT = 0;
+      const onScroll = function () {
+        if (scrollT) return;
+        scrollT = setTimeout(function () { scrollT = 0; self.updateViewport(); }, 180);
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+
+      // hover & focus product/section detection
+      const onPoint = function (e) {
+        const t = e.target;
+        if (!t || !t.closest || t.closest(SKIP_SEL)) return;
+        const m = Scanner.map; if (!m) return;
+        for (let i = 0; i < m.products.length; i++) {
+          const p = m.products[i];
+          if (p.el && p.el.contains(t)) {
+            self.setActiveProduct(p, 'hover');
+            return;
+          }
+        }
+      };
+      document.addEventListener('pointerover', onPoint, { passive: true });
+      document.addEventListener('focusin', onPoint, { passive: true });
+
+      // click learning
+      document.addEventListener('click', function (e) {
+        const t = e.target && e.target.closest ? e.target.closest('button, a[href], [role="button"], [data-product-id]') : null;
+        if (!t || t.closest(SKIP_SEL)) return;
+        self.recordClick(t);
+      }, { capture: true, passive: true });
+
+      // search / filter input learning (never sensitive fields)
+      document.addEventListener('change', function (e) {
+        const el = e.target;
+        if (!el || !el.tagName || el.closest(SKIP_SEL)) return;
+        const tp = (el.getAttribute('type') || '').toLowerCase();
+        const nm = norm((el.getAttribute('name') || '') + ' ' + (el.getAttribute('placeholder') || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.id || ''));
+        if (tp === 'search' || /\b(search|filter|query|buscar|filtrar|categoria|category)\b/.test(nm)) {
+          if (SENS_FIELD.test(nm) || SENS_TEXT.test(norm(el.value))) return;
+          const v = short(clean(el.value), 50);
+          if (v && self.searches.indexOf(v) < 0) {
+            self.searches.push(v);
+            if (self.searches.length > 10) self.searches.shift();
+            self.persist();
+          }
+        }
+      }, { capture: true, passive: true });
+
+      // SPA route change listeners (pushState, replaceState, popstate, hashchange)
+      const onRoute = function () {
+        self.recordRoute(location.pathname + location.hash);
+        setTimeout(function () { if (VL.mode !== 'off') { Scanner.scan(); self.updateViewport(); } }, 120);
+      };
+      window.addEventListener('popstate', onRoute);
+      window.addEventListener('hashchange', onRoute);
+      try {
+        ['pushState', 'replaceState'].forEach(function (fn) {
+          const orig = history[fn];
+          if (typeof orig === 'function' && !orig.__vlWrapped) {
+            const wrapped = function () {
+              const r = orig.apply(this, arguments);
+              onRoute();
+              return r;
+            };
+            wrapped.__vlWrapped = true;
+            history[fn] = wrapped;
+          }
+        });
+      } catch (e) {}
+    },
+
+    recordRoute: function (path) {
+      path = path || (location.pathname + location.hash) || '/';
+      if (this.navTrail[this.navTrail.length - 1] !== path) {
+        this.navTrail.push(path);
+        if (this.navTrail.length > 15) this.navTrail.shift();
+        this.persist();
+      }
+    },
+
+    onScan: function () {
+      if (!this.enabled()) return;
+      this.updateViewport();
+    },
+
+    updateViewport: function () {
+      if (!this.enabled()) return;
+      const vh = window.innerHeight || document.documentElement.clientHeight || 700;
+      const docH = Math.max(vh, document.documentElement.scrollHeight || vh);
+      const pct = docH > vh ? clamp(Math.round((window.scrollY / (docH - vh)) * 100), 0, 100) : 0;
+      this.scrollDepthPct = pct;
+      if (pct > this.maxScrollDepthPct) this.maxScrollDepthPct = pct;
+
+      // detect open modal / dialog
+      let modalTitle = '';
+      const dlg = qsa('dialog[open], [role="dialog"], [aria-modal="true"]').find(function (d) { return !d.closest(SKIP_SEL) && isVisible(d); });
+      if (dlg) {
+        const mh = dlg.querySelector('h1,h2,h3,h4,[data-modal-title]');
+        modalTitle = mh ? short(clean(mh.textContent), 60) : (dlg.getAttribute('aria-label') || 'Dialog');
+      }
+      this.activeModal = modalTitle;
+
+      // determine current section near the top/center of the viewport
+      const m = Scanner.map;
+      if (m) {
+        let bestSec = '';
+        let bestDist = Infinity;
+        const targetY = vh * 0.32;
+        const secs = [].concat(
+          m.headings.filter(function (h) { return h.level <= 3; }).map(function (h) { return { label: h.text, el: h.el }; }),
+          m.anchors.map(function (a) { return { label: a.text, el: a.el }; })
+        );
+        secs.forEach(function (s) {
+          if (!s.el || !s.el.isConnected || !isVisible(s.el)) return;
+          const r = s.el.getBoundingClientRect();
+          if (r.top <= vh * 0.65 && r.bottom >= -vh * 0.5) {
+            const d = Math.abs(r.top - targetY);
+            if (d < bestDist) { bestDist = d; bestSec = s.label; }
+          }
+        });
+        if (!bestSec && m.headings.length) bestSec = m.headings[0].text;
+        const now = Date.now();
+        if (this.currentSection && this.sectionEnteredAt) {
+          const dt = Math.max(0, now - this.sectionEnteredAt);
+          this.sectionDwell[this.currentSection] = (this.sectionDwell[this.currentSection] || 0) + dt;
+        }
+        const changedSec = bestSec && bestSec !== this.currentSection;
+        this.currentSection = bestSec || this.currentSection;
+        this.sectionEnteredAt = now;
+
+        // check product closest to viewport center if none was hovered in the last 3.5s
+        if (!this._prodEnteredAt || now - this._prodEnteredAt > 3500) {
+          let bestProd = null, bestPDist = Infinity;
+          m.products.forEach(function (p) {
+            if (!p.el || !p.el.isConnected || !isVisible(p.el)) return;
+            const r = p.el.getBoundingClientRect();
+            if (r.bottom > vh * 0.15 && r.top < vh * 0.85) {
+              const mid = (r.top + r.bottom) / 2;
+              const d = Math.abs(mid - vh * 0.45);
+              if (d < bestPDist) { bestPDist = d; bestProd = p; }
+            }
+          });
+          if (bestProd) this.setActiveProduct(bestProd, 'viewport');
+        }
+        if (changedSec) this.emit('section', { section: this.currentSection, scrollDepthPct: this.scrollDepthPct });
+      }
+      UI.updateContextChip && UI.updateContextChip();
+      this.persist();
+    },
+
+    setActiveProduct: function (p, via) {
+      if (!p || !p.name) return;
+      const now = Date.now();
+      const id = p.id || norm(p.name).replace(/\s+/g, '-');
+      if (this.activeProductId && this.viewedProducts[this.activeProductId] && this._prodEnteredAt) {
+        const dt = Math.min(30000, Math.max(0, now - this._prodEnteredAt));
+        this.viewedProducts[this.activeProductId].dwellMs = (this.viewedProducts[this.activeProductId].dwellMs || 0) + dt;
+      }
+      const changed = this.activeProductId !== id;
+      this.activeProductId = id;
+      this.activeProductName = p.name;
+      if (via === 'hover') this.hoveredProductId = id;
+      this._prodEnteredAt = now;
+      if (!this.viewedProducts[id]) {
+        this.viewedProducts[id] = { id: id, name: p.name, price: p.price || '', category: p.category || '', views: 1, dwellMs: 0, lastAt: now };
+      } else {
+        if (changed) this.viewedProducts[id].views = (this.viewedProducts[id].views || 0) + 1;
+        this.viewedProducts[id].lastAt = now;
+      }
+      if (changed) {
+        UI.updateContextChip && UI.updateContextChip();
+        this.emit('product_focus', { id: id, name: p.name, price: p.price, via: via });
+        this.persist();
+      }
+    },
+
+    recordClick: function (el) {
+      const label = labelOfEl(el);
+      const ctx = contextOf(el);
+      if (!label) return;
+      const m = Scanner.map;
+      if (m) {
+        for (let i = 0; i < m.products.length; i++) {
+          if (m.products[i].el && m.products[i].el.contains(el)) {
+            this.setActiveProduct(m.products[i], 'click');
+            break;
+          }
+        }
+      }
+      this.clicks.push({ label: short(label, 50), context: short(ctx, 50), at: Date.now() });
+      if (this.clicks.length > 15) this.clicks.shift();
+      this.persist();
+    },
+
+    /** returns the product the user is currently looking at, hovering, or most recently focused on */
+    deicticProduct: function () {
+      const items = Inventory.items();
+      if (!items.length) return null;
+      if (this.activeProductId) {
+        const hit = items.find(function (x) { return x.id === Behavior.activeProductId || norm(x.name) === norm(Behavior.activeProductName); });
+        if (hit) return hit;
+      }
+      // fallback: first visible product in viewport
+      const vis = items.find(function (x) { return x.el && isVisible(x.el) && inViewport(x.el); });
+      return vis || items[0] || null;
+    },
+
+    topInterests: function () {
+      const scores = {};
+      const add = function (k, w) {
+        k = clean(k); if (!k || k.length < 3) return;
+        scores[k] = (scores[k] || 0) + w;
+      };
+      Object.keys(this.viewedProducts).forEach(function (id) {
+        const v = Behavior.viewedProducts[id];
+        add(v.name, (v.views || 1) * 2 + Math.min(5, Math.round((v.dwellMs || 0) / 2000)));
+        if (v.category) add(v.category, 3);
+      });
+      Object.keys(this.sectionDwell).forEach(function (sec) {
+        add(sec, Math.min(4, 1 + Math.round((Behavior.sectionDwell[sec] || 0) / 4000)));
+      });
+      this.searches.forEach(function (s) { add(s, 4); });
+      return Object.keys(scores).sort(function (a, b) { return scores[b] - scores[a]; }).slice(0, 5);
+    },
+
+    persist: function () {
+      try {
+        store.sset(KEYS.beh, JSON.stringify({
+          sectionDwell: this.sectionDwell,
+          viewedProducts: this.viewedProducts,
+          navTrail: this.navTrail,
+          searches: this.searches
+        }));
+      } catch (e) {}
+    },
+
+    emit: function (type, extra) {
+      if (CONFIG.emit && CONFIG.emit.intents === false) return;
+      try { window.dispatchEvent(new CustomEvent('voicelayer:behavior', { detail: Object.assign({ type: type }, extra || {}) })); } catch (e) {}
+    },
+
+    snapshot: function () {
+      const activeP = this.deicticProduct();
+      const viewed = Object.keys(this.viewedProducts).map(function (k) { return Behavior.viewedProducts[k]; })
+        .sort(function (a, b) { return (b.lastAt || 0) - (a.lastAt || 0); });
+      return {
+        url: location.href,
+        title: document.title || '',
+        currentSection: this.currentSection || '',
+        activeModal: this.activeModal || '',
+        activeProduct: activeP ? { id: activeP.id, name: activeP.name, price: activeP.price, value: activeP.value, inStock: activeP.inStock, category: activeP.category, description: activeP.description } : null,
+        scrollDepthPct: this.scrollDepthPct,
+        maxScrollDepthPct: this.maxScrollDepthPct,
+        sessionDurationSec: Math.round((Date.now() - this.startedAt) / 1000),
+        viewedProducts: viewed.slice(0, 8),
+        sectionDwell: Object.assign({}, this.sectionDwell),
+        recentClicks: this.clicks.slice(-6),
+        searches: this.searches.slice(),
+        navTrail: this.navTrail.slice(),
+        interests: this.topInterests()
+      };
+    }
+  };
+
+  /* ------------------------------------------------------------------ CUSTOM HOST ACTIONS / WEBMCP TOOLS */
+  const Actions = {
+    _map: {},
+    init: function () {
+      this._map = {};
+      const a = CONFIG.actions;
+      if (a && typeof a === 'object') {
+        const self = this;
+        Object.keys(a).forEach(function (k) { self.register(k, a[k]); });
+      }
+    },
+    register: function (name, def) {
+      if (name && typeof name === 'object' && !def) {
+        def = name;
+        name = def.id || def.name || norm(def.label || '').replace(/\s+/g, '_');
+      }
+      if (!name || !def) return false;
+      if (typeof def === 'function') def = { label: name, phrases: [name], handler: def };
+      this._map[name] = {
+        id: name,
+        name: name,
+        label: def.label || name,
+        phrases: Array.isArray(def.phrases) ? def.phrases.slice() : [def.label || name],
+        confirm: !!def.confirm,
+        handler: def.handler
+      };
+      return true;
+    },
+    list: function () {
+      return Object.keys(this._map).map(function (k) {
+        const x = Actions._map[k];
+        return { id: x.id, name: x.name, label: x.label, phrases: x.phrases, confirm: x.confirm };
+      });
+    },
+    match: function (text) {
+      const t = norm(text); if (!t) return null;
+      let best = null, bestScore = 0;
+      Object.keys(this._map).forEach(function (k) {
+        const act = Actions._map[k];
+        (act.phrases || []).forEach(function (p) {
+          const s = score(t, p);
+          if (s >= 0.78 && s > bestScore) { best = act; bestScore = s; }
+        });
+      });
+      return best;
+    }
+  };
+
+  const Demand = {
+    _events: [],
+    record: function (ev) {
+      if (!ev || typeof ev !== 'object') return;
+      const item = Object.assign({ at: new Date().toISOString(), lang: LANG, page: location.pathname }, ev);
+      if (item.query) item.query = Forms.redact(String(item.query)).slice(0, 120);
+      this._events.push(item);
+      if (this._events.length > 60) this._events.shift();
+      try { window.dispatchEvent(new CustomEvent('voicelayer:demand', { detail: item })); } catch (e) {}
+      if (CONFIG.apiBase && CONFIG.demandBeacon === true) {
+        try { Net.beacon(item); } catch (e) {}
+      }
+    },
+    list: function () { return this._events.slice(); }
+  };
 
   /* =========================================================================
    * 4. WAVEFORM RENDERER — canvas, 40 round-capped bars, 60fps.
@@ -1516,9 +2465,13 @@
   };
   RadialRenderer.prototype.resize = function () {
     const vw = document.documentElement.clientWidth || window.innerWidth, vh = window.innerHeight || 700;
-    this.R = clamp(Math.round(Math.min(vw * 0.19, vh * (vh < 560 ? 0.10 : 0.13))), 46, 120);
-    this.S = Math.round(this.R * 5);
-    this.W = this.visual === 'radial' ? this.S : Math.max(this.S, Math.round(Math.min(vw * 0.88, 720)));
+    const isTop = CONFIG.mode === 'glass' && CONFIG.glass && CONFIG.glass.dock === 'top';
+    const bandH = isTop ? vh * clamp(Number(CONFIG.glass.height) || 0.42, 0.25, 0.6) : vh;
+    this.R = isTop
+      ? clamp(Math.round(Math.min(vw * 0.08, bandH * 0.135)), 24, 52)
+      : clamp(Math.round(Math.min(vw * 0.19, vh * (vh < 560 ? 0.10 : 0.13))), 46, 120);
+    this.S = Math.round(this.R * (isTop ? 3.8 : 5));
+    this.W = this.visual === 'radial' ? this.S : Math.max(this.S, Math.round(Math.min(vw * (isTop ? 0.72 : 0.88), isTop ? 560 : 720)));
     this.dpr = this.lite ? 1 : Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.style.width = this.W + 'px'; this.canvas.style.height = this.S + 'px';
     this.canvas.width = Math.round(this.W * this.dpr); this.canvas.height = Math.round(this.S * this.dpr);
@@ -1632,7 +2585,7 @@
     ctx.strokeStyle = col(0.7, 14); ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832); ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r - 3, Math.PI * 1.1, Math.PI * 1.65); ctx.stroke();   // glass highlight
     // the travelling line (default visual)
-    if (this.visual !== 'radial') { this._tick(now, this.sleep ? 0 : this._amp(state, t, w)); this._drawLine(this.sleep ? 'idle' : state, col, glow, cx, cy + R * 1.72, R, t); }
+    if (this.visual !== 'radial') { this._tick(now, this.sleep ? 0 : this._amp(state, t, w)); this._drawLine(this.sleep ? 'idle' : state, col, glow, cx, cy + R * (R < 56 ? 1.48 : 1.72), R, t); }
     if (this.visual === 'line') return;
     // radial bars
     const r0 = r * 1.1, maxL = R * 0.72, bw = Math.max(2, (6.2832 * r0 / N) * 0.52);
@@ -1684,6 +2637,30 @@
         body: JSON.stringify({ text: text, lang: lang, voice: (CONFIG.dgVoices && CONFIG.dgVoices[lang]) || '' }) }, 15000);
       if (!r.ok) throw new Error('speak ' + r.status);
       return r.arrayBuffer();
+    },
+    ask: async function (question, lang, context) {
+      const r = await Net.req('/ask', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ question: question, lang: lang, context: context }) }, 11000);
+      if (!r.ok) throw new Error('ask ' + r.status);
+      return r.json();
+    },
+    classify: async function (utterance, lang, state) {
+      const r = await Net.req('/classify', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ utterance: utterance, lang: lang, state: state }) }, 3500);
+      if (!r.ok) throw new Error('classify ' + r.status);
+      return r.json();
+    },
+    beacon: function (ev) {
+      if (!CONFIG.apiBase) return;
+      const url = Net.url('/beacon');
+      const body = JSON.stringify(ev);
+      try {
+        if (navigator.sendBeacon) {
+          const blob = new Blob([body], { type: 'application/json' });
+          if (navigator.sendBeacon(url, blob)) return;
+        }
+      } catch (e) {}
+      fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body, keepalive: true, credentials: 'same-origin' }).catch(function () {});
     }
   };
 
@@ -1695,12 +2672,15 @@
 
   const Voice = {
     engine: 'browser',            // active engine: 'browser' | 'deepgram'
-    dgOk: false,                  // server says Deepgram is configured + enabled
-    dgBroken: false,              // set after repeated Deepgram failures this session
+    grokOk: false,                // server says Grok Voice 3.0 TTS is configured + enabled
+    dgSttOk: false,               // server says Deepgram Nova-3 WebSocket STT is configured + enabled
+    dgOk: false,                  // server says server TTS (Grok Voice 3.0 or Deepgram Aura-2) is configured + enabled
+    dgBroken: false,              // set after repeated Deepgram STT failures this session
     dgTtsBroken: 0,
     supportsRecognition: function () { return !!(window.__VL_MOCK_SR || SR) || this.wantDG(); },
-    supportsSpeech: function () { return TTS || this.wantDG(); },
-    wantDG: function () { return this.engine === 'deepgram' && this.dgOk && !this.dgBroken && !!(AC && navigator.mediaDevices && navigator.mediaDevices.getUserMedia); },
+    supportsSpeech: function () { return TTS || this.wantServerTTS(); },
+    wantDG: function () { return this.engine === 'deepgram' && this.dgSttOk && !this.dgBroken && !!(AC && navigator.mediaDevices && navigator.mediaDevices.getUserMedia); },
+    wantServerTTS: function () { return this.engine === 'deepgram' && this.dgOk && this.dgTtsBroken < 2 && !!AC; },
 
     onFinal: null, onInterim: null, onError: null, onEnd: null, onStart: null, onAudioLevelReady: null, onOutAnalyser: null, onNotice: null,
 
@@ -1947,7 +2927,7 @@
 
     /** call from a user gesture: lets Web Audio output start later without an autoplay block */
     unlock: function () {
-      if (!AC || !this.wantDG()) return;
+      if (!AC || !this.wantServerTTS()) return;
       try {
         if (!this._octx || this._octx.state === 'closed') {
           this._octx = new AC();
@@ -1999,7 +2979,7 @@
       if (!CONFIG.speak || !clean(text)) return Promise.resolve(false);
       const gen = ++this._genSpeak;
       this._stopOut();
-      if (this.wantDG() && this.dgTtsBroken < 2 && this._octx) return this._speakDG(text, gen);
+      if (this.wantServerTTS() && this._octx) return this._speakDG(text, gen);
       return this._speakBrowser(text, gen);
     },
 
@@ -2161,7 +3141,9 @@
           '<div class="vl-g-pane" aria-hidden="true"></div>' +
           '<div class="vl-g-ui">' +
             '<header class="vl-g-top">' +
-              '<span class="vl-g-badge" id="vl-g-demo" hidden></span><span class="vl-spacer"></span>' +
+              '<span class="vl-g-badge" id="vl-g-demo" hidden></span>' +
+              '<span class="vl-ctxchip" id="vl-g-ctx" hidden></span>' +
+              '<span class="vl-spacer"></span>' +
               '<span class="vl-g-chip vl-g-micchip" id="vl-g-mic" role="status" aria-live="polite"><i></i><span id="vl-g-mictxt"></span></span>' +
               '<span class="vl-g-chip vl-g-statechip" id="vl-g-state" role="status"></span>' +
               '<button class="vl-g-ib" type="button" id="vl-g-mute" aria-pressed="false">' + ICON.vol + '</button>' +
@@ -2180,6 +3162,7 @@
               '<article class="vl-g-card" id="vl-g-card" hidden>' +
                 '<header class="vl-g-chead"><span class="vl-g-kind" id="vl-g-kind"></span><span class="vl-g-n" id="vl-g-n"></span></header>' +
                 '<p class="vl-g-ctext" id="vl-g-ctext"></p>' +
+                '<div class="vl-g-cmp" id="vl-g-cmp" hidden></div>' +
                 '<p class="vl-g-because" id="vl-g-because" hidden></p>' +
                 '<p class="vl-g-rx" id="vl-g-rx" hidden></p>' +
                 '<div class="vl-g-offer" id="vl-g-offer" hidden><p class="vl-g-oname" id="vl-g-oname"></p><p class="vl-g-disc" id="vl-g-disc"></p>' +
@@ -2203,6 +3186,7 @@
           '<header class="vl-head">' +
             '<span class="vl-title" id="vl-title"></span>' +
             '<span class="vl-state" id="vl-state" role="status" aria-live="polite"></span>' +
+            '<span class="vl-ctxchip" id="vl-ctx" hidden></span>' +
             '<span class="vl-spacer"></span>' +
             '<button class="vl-iconbtn" type="button" id="vl-mute" aria-pressed="false">' + ICON.vol + '</button>' +
             '<button class="vl-iconbtn" type="button" id="vl-min">' + ICON.minus + '</button>' +
@@ -2237,6 +3221,7 @@
       this.interim = $('vl-interim'); this.stateChip = $('vl-state'); this.input = $('vl-input'); this.micBtn = $('vl-mic');
       this.muteBtn = $('vl-mute'); this.layer = $('vl-layer'); this.micTxt = $('vl-mictxt'); this.bubble = $('vl-bubble'); this.toast = $('vl-toast');
       this.minBtn = $('vl-min'); this.offBtn = $('vl-off'); this.langBox = $('vl-lang'); this.note = $('vl-note');
+      this.ctxChip = $('vl-ctx'); this.gctxChip = $('vl-g-ctx');
       this.minBtn.hidden = !CONFIG.allowMinimize; this.offBtn.hidden = !CONFIG.allowTurnOff;
       this.langBoxes = [this.langBox];
       if (G) {
@@ -2340,6 +3325,12 @@
           if (clean(v)) self.h.onSubmit && self.h.onSubmit(v);
         });
       }
+      [this.ctxChip, this.gctxChip].forEach(function (el) {
+        if (!el) return;
+        el.addEventListener('click', function () {
+          self.h.onSubmit && self.h.onSubmit(LANG === 'es' ? '¿qué estoy viendo?' : 'what am I looking at?');
+        });
+      });
       window.addEventListener('resize', function () { self.placeOrb(); if (self.open) self.positionPanel(); self.wave && self.wave.resize(); self.radial && self.radial.resize(); self._updateRings(); });
       this.buildLangSwitch();
       this.applyText();
@@ -2384,6 +3375,7 @@
       this.setEngine(this._engine);
       if (this.open) this.positionPanel();
       this.updateHint();
+      this.updateContextChip();
     },
     buildLangSwitch: function () {
       const self = this;
@@ -2428,6 +3420,24 @@
       const T = this.T || I.ui, awake = this.glass.getAttribute('data-awake') === 'true';
       this.ghint.textContent = !awake ? '' : (this._listening ? T.states.listening : (this._state === 'idle' ? T.gTapMic : ''));
     },
+    updateContextChip: function () {
+      if (!Behavior.enabled()) return;
+      const sec = Behavior.currentSection || '';
+      const prod = Behavior.activeProductName || '';
+      const dp = prod ? Behavior.deicticProduct() : null;
+      const priceStr = dp && dp.price ? ' (' + dp.price + ')' : '';
+      let text = '';
+      if (sec && prod && norm(sec) !== norm(prod)) text = '📍 ' + short(sec, 16) + ' · ' + short(prod, 22) + priceStr;
+      else if (prod) text = '📍 ' + short(prod, 26) + priceStr;
+      else if (sec) text = '📍 ' + short(sec, 28);
+      [this.ctxChip, this.gctxChip].forEach(function (el) {
+        if (!el) return;
+        if (!text) { el.hidden = true; el.textContent = ''; return; }
+        el.hidden = false;
+        el.textContent = text;
+        el.title = (LANG === 'es' ? 'Haz clic para escuchar qué estás viendo: ' : 'Click to hear what you are looking at: ') + text;
+      });
+    },
     setLine: function (kind, text) {
       if (!this.isGlass) return;
       if (kind === 'user') { this.guser.textContent = text; return; }
@@ -2440,6 +3450,7 @@
       $('vl-g-kind').textContent = ins.kind === 'reminder' ? T.gKindReminder : ins.kind === 'praise' ? T.gKindPraise : T.gKindData;
       $('vl-g-n').textContent = n > 1 ? (i + 1) + ' / ' + n : '';
       $('vl-g-ctext').textContent = ins.text;
+      if ($('vl-g-cmp')) $('vl-g-cmp').hidden = true;
       $('vl-g-because').hidden = true; $('vl-g-rx').hidden = true; $('vl-g-offer').hidden = true;
       $('vl-g-next').hidden = !(i + 1 < n);
       $('vl-g-why').hidden = false; $('vl-g-actions').hidden = false;
@@ -2447,7 +3458,39 @@
     },
     hideCard: function () {
       if (!this.isGlass) return;
-      this.gcard.hidden = true; this.$('vl-g-offer').hidden = true; this.glass.setAttribute('data-card', 'false');
+      this.gcard.hidden = true; this.$('vl-g-offer').hidden = true;
+      if (this.$('vl-g-cmp')) this.$('vl-g-cmp').hidden = true;
+      this.glass.setAttribute('data-card', 'false');
+    },
+    showCompare: function (a, b) {
+      if (!this.isGlass || !a || !b) return;
+      const $ = this.$;
+      const cmpEl = $('vl-g-cmp');
+      if (!cmpEl) return;
+      const esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+      const stockBadge = function (p) { return p.inStock !== false ? (LANG === 'es' ? 'En stock' : 'In stock') : (LANG === 'es' ? 'Agotado' : 'Out of stock'); };
+      cmpEl.innerHTML =
+        '<div class="vl-g-cmp-col" data-stock="' + (a.inStock !== false ? 'in' : 'out') + '">' +
+          '<strong>' + esc(a.name) + '</strong>' +
+          '<span class="vl-g-cmp-price">' + esc(a.price || '—') + '</span>' +
+          '<span class="vl-g-cmp-stock">' + esc(stockBadge(a)) + '</span>' +
+          (a.description ? '<small>' + esc(short(a.description, 65)) + '</small>' : '') +
+        '</div>' +
+        '<div class="vl-g-cmp-vs">VS</div>' +
+        '<div class="vl-g-cmp-col" data-stock="' + (b.inStock !== false ? 'in' : 'out') + '">' +
+          '<strong>' + esc(b.name) + '</strong>' +
+          '<span class="vl-g-cmp-price">' + esc(b.price || '—') + '</span>' +
+          '<span class="vl-g-cmp-stock">' + esc(stockBadge(b)) + '</span>' +
+          (b.description ? '<small>' + esc(short(b.description, 65)) + '</small>' : '') +
+        '</div>';
+      this.gcard.hidden = false;
+      this.gcard.setAttribute('data-kind', 'compare');
+      $('vl-g-kind').textContent = LANG === 'es' ? 'Comparación' : 'Comparison';
+      $('vl-g-n').textContent = '2 items';
+      $('vl-g-ctext').textContent = '';
+      $('vl-g-because').hidden = true; $('vl-g-rx').hidden = true; $('vl-g-offer').hidden = true; $('vl-g-actions').hidden = true;
+      cmpEl.hidden = false;
+      this.glass.setAttribute('data-card', 'true');
     },
     showWhy: function (on) {
       if (!this.isGlass || !this.gcard || this.gcard.hidden) return;
@@ -2660,7 +3703,7 @@
     if (/^(stop|cancel|quiet|silence|shut up|be quiet|enough|halt|stop (talking|listening|reading|speaking|it|that|everything))$/.test(t)) return { type: 'stop', raw: raw };
     if (/^(close|dismiss|hide|goodbye|bye|exit|go away|close (the |this )?(assistant|panel|widget|window|chat|this|voice ?layer|it))$/.test(t)) return { type: 'close', raw: raw };
     if (/^(help|commands|what can (you|i) (do|say)|what are the commands|how do (i|you) (use|work)|how does this work)$/.test(t)) return { type: 'help', raw: raw };
-    if (/(what is|what s|whats|whats up with) (this|the) (site|website|page|store|shop|place)|tell me about (this|the) (site|website|page|store|shop)|about (this|the) (site|website|page)|(describe|summari[sz]e|explain|overview of) (this|the) (site|website|page|store)|what (can i do|do you sell|do they sell|do you have|do they have) here|where am i|^summary$|^summari[sz]e$/.test(t)) return { type: 'about', raw: raw };
+    if (/(what is|what s|whats|whats up with) (this|the) (site|website|page|store|shop|place)|tell me about (this|the) (site|website|page|store|shop)|about (this|the) (site|website|page)|(describe|summari[sz]e|explain|overview of) (this|the) (site|website|page|store)|what (can i do|do you sell|do they sell|do you have|do they have) here|^summary$|^summari[sz]e$/.test(t)) return { type: 'about', raw: raw };
     if ((m = t.match(/^read(?: out| aloud)?(?: (.+))?$/))) {
       const rest = (m[1] || '').trim();
       if (!rest || GENERIC_READ.en.test(rest)) return { type: 'read', raw: raw };
@@ -2690,7 +3733,7 @@
     if (/^(para|parar|detente|detener|calla|callate|silencio|cancela|cancelar|basta|alto|stop|para ya|detente ya|deja de (hablar|leer|escuchar)|para de (hablar|leer|escuchar)|para (todo|eso|esto))$/.test(t)) return { type: 'stop', raw: raw };
     if (/^(cierra|cerrar|oculta|ocultar|adios|chao|chau|hasta luego|salir|sal|cierra (el |la |este |esta )?(asistente|panel|widget|ventana|chat|esto|eso|voice ?layer))$/.test(t)) return { type: 'close', raw: raw };
     if (/^(ayuda|ayudame|comandos|que puedes hacer|que puedo (decir|hacer)|que comandos hay|como funciona|como (se )?(usa|te uso)|como funciona esto)$/.test(t)) return { type: 'help', raw: raw };
-    if (/que es (este|esta|el|la) (sitio|sitio web|web|pagina|pagina web|tienda|lugar)|(cuentame|hablame|dime) (sobre|de|acerca de) (este|esta|el|la) (sitio|sitio web|web|pagina|tienda)|de que (va|trata) (este|esta|el|la) (sitio|sitio web|web|pagina|tienda)|(describe|resume|explica|resumen de) (este|esta|el|la) (sitio|sitio web|web|pagina|tienda)|que (puedo hacer|venden|vendes|vende|hay|tienen|tienes) (aqui|en esta)|que se vende aqui|donde estoy|^resumen$|^resumir$|^resume$/.test(t)) return { type: 'about', raw: raw };
+    if (/que es (este|esta|el|la) (sitio|sitio web|web|pagina|pagina web|tienda|lugar)|(cuentame|hablame|dime) (sobre|de|acerca de) (este|esta|el|la) (sitio|sitio web|web|pagina|tienda)|de que (va|trata) (este|esta|el|la) (sitio|sitio web|web|pagina|tienda)|(describe|resume|explica|resumen de) (este|esta|el|la) (sitio|sitio web|web|pagina|tienda)|que (puedo hacer|venden|vendes|vende|hay|tienen|tienes) (aqui|en esta)|que se vende aqui|^resumen$|^resumir$|^resume$/.test(t)) return { type: 'about', raw: raw };
     if ((m = t.match(/^(?:lee|leer|leeme|lee me|leelo|lee lo|leemelo)(?: en voz alta)?(?: (.+))?$/))) {
       const rest = (m[1] || '').trim();
       if (!rest || GENERIC_READ.es.test(rest)) return { type: 'read', raw: raw };
@@ -2841,7 +3884,7 @@
   }
   function sliceOf(f, start, len) { if (!len || f.map[start] == null) return ''; const a = f.map[start], b = f.map[Math.min(f.map.length - 1, start + len - 1)]; return clean(f.raw.slice(a, b + 1)).replace(/[\s.!?¿¡]+$/, ''); }
 
-  /** the grammar for the three skills; returns an intent or null (language comes from the active pack) */
+  /** the grammar for skills, inventory, spatial/deictic, profile, and host actions; returns an intent or null */
   function parseSkills(raw) {
     const G = I.sg; if (!G) return null;
     const f = fold(raw), s = f.s;
@@ -2859,6 +3902,51 @@
       if ((m = s.match(G.mem.name)) && !G.notName.test(m[1])) { const v = sliceOf(f, s.lastIndexOf(m[1]), m[1].length).replace(/\s+(please|thanks|thank you|por favor|gracias)$/i, ''); return { type: 'mem', act: 'name', val: v, raw: raw }; }
       if ((m = s.match(G.mem.fact))) { const v = sliceOf(f, s.lastIndexOf(m[1]), m[1].length); return { type: 'mem', act: 'fact', val: v, raw: raw }; }
     }
+    // ---- spatial & deictic awareness ("where am I?", "what am I looking at?", "what section am I in?", "what have I viewed?") ----
+    if (/^(where am i|what section am i in|where on the page am i|which section is this|current section|donde estoy|en que seccion estoy|donde estoy en la pagina|que seccion es esta)$/.test(tn))
+      return { type: 'spatial', act: 'where', raw: raw };
+    if (/^(what am i (looking at|viewing|reading)|what is this( product| item| one)?|whats this( product| item| one)?|tell me (more )?about this( product| item| one)?|describe this( product| item| one)?|que estoy (viendo|mirando|leyendo)|que es esto|que (producto|articulo) es este|(hablame|cuentame) (mas )?(de|sobre) (esto|este producto|este articulo))$/.test(tn))
+      return { type: 'spatial', act: 'looking', raw: raw };
+    if (/^(what have i (looked at|viewed|seen|browsed|explored)|what did i (look at|view)|what products have i (seen|viewed|looked at)|my browsing history|que he (visto|mirado|explorado)|que productos he visto|mi historial( de navegacion)?)$/.test(tn))
+      return { type: 'spatial', act: 'history', raw: raw };
+
+    // ---- cart awareness ----
+    if (/^(what is in my (cart|bag|basket)|whats in my (cart|bag|basket)|check (my )?(cart|bag)|how many items( are)? in (my |the )?(cart|bag)|cart status|my cart|que hay en (mi |el )?(carrito|cesta|bolsa)|que tengo en (mi |el )?(carrito|cesta)|cuantos articulos hay en (mi |el )?carrito|estado del carrito|ver mi carrito)$/.test(tn))
+      return { type: 'cart', raw: raw };
+
+    // ---- inventory & catalog queries ----
+    if (/^(what is in stock|whats in stock|what do you have in stock|what products are (in stock|available)|show( me)? (the )?inventory|list (the )?(inventory|catalog|products)|que hay en stock|que tienen en stock|que productos (hay|estan) disponibles|inventario|catalogo|mostrar inventario)$/.test(tn))
+      return { type: 'inv', act: 'all', raw: raw };
+    if ((m = s.match(/(?:under|below|less than|cheaper than|por menos de|menos de|bajo|inferior a)\s*[$€£¥]?\s*(\d+(?:[.,]\d+)?)/)))
+      return { type: 'inv', act: 'under', max: parseFloat(m[1].replace(',', '.')), raw: raw };
+    if (/^(what is the (cheapest|lowest priced)|whats the (cheapest|lowest priced)|cheapest|lowest price)(\s+(product|item|option|one|here|on this page))?$/.test(tn) || /^(cual es el (producto |articulo )?mas (barato|economico)|(el |producto |articulo )?mas (barato|economico))$/.test(tn))
+      return { type: 'inv', act: 'cheapest', raw: raw };
+    if (/^(what is the (most expensive|highest priced|priciest)|whats the (most expensive|highest priced|priciest)|most expensive|highest price|priciest)(\s+(product|item|option|one|here|on this page))?$/.test(tn) || /^(cual es el (producto |articulo )?mas caro|(el |producto |articulo )?mas caro)$/.test(tn))
+      return { type: 'inv', act: 'priciest', raw: raw };
+    if ((m = tn.match(/^(?:compare|comparison between|difference between|whats the difference between|compara|comparar|diferencia entre|cual es la diferencia entre)\s+(.+?)\s+(?:and|with|to|vs|versus|or|y|con|a|o)\s+(.+)$/)))
+      return { type: 'inv', act: 'compare', a: m[1], b: m[2], raw: raw };
+    if ((m = tn.match(/^(?:is|are|do you have|got)\s+(.+?)\s+(?:in stock|available|in inventory)$/)) ||
+        (m = tn.match(/^(?:esta|estan|tienen|tienes|hay)\s+(.+?)\s+(?:en stock|disponibles?|en inventario)$/)) ||
+        (m = tn.match(/^(?:esta|estan)\s+(?:disponibles?|en stock)\s+(?:el |la |los |las )?(.+)$/)))
+      return { type: 'inv', act: 'stock', arg: m[1].replace(/^(the|a|an|el|la|los|las)\s+/, ''), raw: raw };
+    if ((m = tn.match(/^(?:how much (?:is|are|does|do)|what (?:is|are) the price of|whats the price of|what does|price of|cost of)\s+(.+?)(?:\s+cost)?$/)) ||
+        (m = tn.match(/^(?:cuanto (?:cuesta|cuestan|vale|valen)|cual es el precio de|precio de|que cuesta|que vale)\s+(?:el |la |los |las )?(.+)$/)))
+      return { type: 'inv', act: 'price', arg: m[1].replace(/^(the|a|an|el|la|los|las)\s+/, ''), raw: raw };
+
+    // ---- profile & recommendations ----
+    if (/^(who am i|what is my profile|whats my profile|my profile|quien soy|cual es mi perfil|mi perfil)$/.test(tn))
+      return { type: 'profile', act: 'who', raw: raw };
+    if ((m = tn.match(/^(?:my (?:goal|focus|priority|objective) is|i am looking for|im looking for|i want help with|mi (?:objetivo|meta|prioridad) es|estoy buscando|busco apoyo para)\s+(.+)$/)))
+      return { type: 'profile', act: 'goal', val: m[1], raw: raw };
+    if ((m = tn.match(/^(?:what (?:do|would) you (?:recommend|suggest)|recommend (?:something|a product|an item)|suggest (?:something|a product|an item)|what should i (?:get|buy|try)|que (?:me )?(?:recomiendas|sugieres)|recomiendame (?:algo|un producto)|sugiereme algo)(?:\s+(?:for|para)\s+(.+))?$/))) {
+      if (isMedAdvice(tn)) return null; // let medical advice guard handle clinical questions
+      return { type: 'profile', act: 'recommend', arg: m[1] || '', raw: raw };
+    }
+
+    // ---- custom host action ----
+    const customAct = Actions.match(tn);
+    if (customAct) return { type: 'action', action: customAct, raw: raw };
+
     // ---- forms ----
     if (CONFIG.forms) {
       if (G.undo.test(tn)) return { type: 'formundo', raw: raw };
@@ -3090,7 +4178,7 @@
     addFact: function (t) { if (!this.d) return false; this.d.facts.push({ t: t, at: Date.now() }); while (this.d.facts.length > this.cfg.maxFacts) this.d.facts.shift(); const ok = this.write(); if (ok) this.emit('saved'); return ok; },
     snapshot: function () { return this.has() ? JSON.parse(JSON.stringify(this.d)) : null; },
     forgetName: function () { if (!this.d) return true; this.d.name = ''; this.sessName = ''; this.write(); const ok = !JSON.parse(store.get(KEYS.mem) || '{}').name; this.emit('forgot'); return ok; },
-    wipe: function () { store.set(KEYS.mem, null); store.sset(KEYS.memVisit, null); this.d = null; this.sessName = ''; const ok = store.get(KEYS.mem) === null; this.emit('forgot'); return ok; },
+    wipe: function () { store.set(KEYS.mem, null); store.sset(KEYS.memVisit, null); if (typeof Profile !== 'undefined' && Profile.wipe) Profile.wipe(); this.d = null; this.sessName = ''; const ok = store.get(KEYS.mem) === null; this.emit('forgot'); return ok; },
     /** a RETURNING visitor (second session or later) → { name, last } ; otherwise null. `last` = a page title from an EARLIER visit, never this one */
     ret: function () {
       if (!this.active() || (this.d.visits || 0) < 2) return null;
@@ -3245,7 +4333,7 @@
       if (q === 'off') store.set(KEYS.off, '1');
       this.mode = store.get(KEYS.off) === '1' ? 'off' : (store.get(KEYS.min) === '1' && CONFIG.allowMinimize ? 'min' : 'on');
       this.muted = store.get(KEYS.speak) === 'off';
-      Companion.init(); Memory.init(); Knowledge.init();
+      Companion.init(); Memory.init(); Knowledge.init(); Profile.init(); Behavior.init(); Actions.init();
 
       UI.build({
         onOrb: function () { self.touched = true; Voice.unlock(); self.onOrb(); },
@@ -3299,9 +4387,9 @@
       window.addEventListener('pagehide', function () { Voice.stop(); Voice.cancelSpeech(); });
 
       // ---- scan once the DOM is ready, then keep the map fresh (not while turned off) ----
-      const boot = function () { if (self.mode !== 'off') { Scanner.scan(); Scanner.watch(); } };
+      const boot = function () { if (self.mode !== 'off') { Scanner.scan(); Scanner.watch(); Behavior.updateViewport(); UI.updateContextChip(); } };
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-      window.addEventListener('load', function () { if (self.mode !== 'off') Scanner.scan(); });
+      window.addEventListener('load', function () { if (self.mode !== 'off') { Scanner.scan(); Behavior.updateViewport(); UI.updateContextChip(); } });
 
       // ---- owner flag + engine, then reveal ----
       this.setup().then(function () {
@@ -3312,20 +4400,22 @@
       if (CONFIG.debug) log('debug mode on — use the force-state buttons in the panel');
     },
 
-    /** ask the server: is the widget switched off by the owner? is Deepgram available? Never blocks longer than ~2.5s; fails open. */
+    /** ask the server: is the widget switched off by the owner? is Grok Voice 3.0 / Deepgram available? Never blocks longer than ~2.5s; fails open. */
     setup: async function () {
       let cfg = null;
       if (CONFIG.apiBase && (CONFIG.remoteConfig || CONFIG.provider !== 'browser')) {
         try { cfg = await Net.config(); } catch (e) { log('config unavailable →', e && e.message); }
       }
       if (cfg && cfg.enabled === false) { this.kill('owner'); return; }
-      Voice.dgOk = !!(cfg && cfg.deepgram);
+      Voice.grokOk = !!(cfg && cfg.grok);
+      Voice.dgSttOk = !!(cfg && cfg.deepgramStt);
+      Voice.dgOk = !!(cfg && (cfg.grok || cfg.deepgram));
       if (cfg && cfg.voices) CONFIG.dgVoices = Object.assign({}, cfg.voices, CONFIG.dgVoices || {});
       Voice.engine = (CONFIG.provider !== 'browser' && Voice.dgOk) ? 'deepgram' : 'browser';
-      if (CONFIG.provider === 'deepgram' && !Voice.dgOk) log('provider=deepgram requested but the server has no Deepgram key → browser voice');
+      if ((CONFIG.provider === 'deepgram' || CONFIG.provider === 'grok') && !Voice.dgOk) log('server voice requested but no Grok/Deepgram key configured → browser voice');
       UI.setEngine(Voice.engine);
       UI.setMicUI(false, Voice.supportsRecognition(), Voice.supportsRecognition() ? '' : UI.T.micUnavailable);
-      log('voice engine:', Voice.engine);
+      log('voice engine:', Voice.grokOk ? 'grok-voice-3.0' : Voice.engine);
     },
 
     /** owner kill switch: remove the widget completely (no UI, no listeners that act, mic released) */
@@ -3590,11 +4680,28 @@
           else if (pend.strict) this.pending = null;          // a skill's yes/no question lapses the moment the visitor says anything else
         } else this.pending = null;
         intent = intent || parse(text);
-        if (!viaPending && intent.type === 'unknown') { const sk = parseSkills(text); if (sk) intent = sk; }
+        if (!viaPending && (intent.type === 'unknown' || intent.soft)) { const sk = parseSkills(text); if (sk) intent = sk; }
+        if (!viaPending && intent.type !== 'unknown') intent.bypass = true; // Deterministic exact-command bypass hit
+
+        // Tier-0.5 Jev System One Classifier: only invoked when deterministic bypass returns 'unknown' and jevClassify is enabled
+        if (!viaPending && intent.type === 'unknown' && CONFIG.jevClassify && CONFIG.apiBase) {
+          const jevRes = await this.classifyWithJev(text);
+          if (!alive()) return;
+          if (jevRes && jevRes.blocked) {
+            this.receipt({ action: 'jev_guardrail', label: short(text, 40), status: 'refused', verification: 'none', detail: 'blocked by Jev noul safety threshold' });
+            await this.say(I.sk.m.refuse);
+            return;
+          }
+          if (jevRes && jevRes.allowlisted && jevRes.intent && jevRes.intent !== 'needs_open_qa') {
+            const mapped = this.mapJevToIntent(jevRes, text);
+            if (mapped) intent = mapped;
+          }
+        }
+
         try {
           var emitCfg = CONFIG.emit || { intents: true, transcripts: false };
           if (emitCfg.intents !== false) {
-            var detail = { intent: intent.type, arg: intent.type === 'formset' || intent.type === 'mem' ? '' : (intent.arg || ''), language: LANG };
+            var detail = { intent: intent.type, arg: intent.type === 'formset' || intent.type === 'mem' || intent.type === 'profile' ? '' : (intent.arg || ''), language: LANG, viaJev: !!intent.viaJev, bypass: !!intent.bypass };
             if (emitCfg.transcripts === true) detail.text = Forms.redact(text);   // transcripts only on explicit host opt-in
             window.dispatchEvent(new CustomEvent('voicelayer:command', { detail: detail }));
           }
@@ -3607,7 +4714,7 @@
           if (Companion.engaged() && await Companion.intercept(text, intent, tok, alive)) return;
         }
         if (!viaPending && Knowledge.enabled() && await this.knowledge(text, intent, tok, alive)) return;
-        if (intent.type === 'unknown' && typeof CONFIG.aiAnswer === 'function' && !(CONFIG.mode === 'glass' && Companion.engaged() && this.woke)) {
+        if (intent.type === 'unknown' && (typeof CONFIG.aiAnswer === 'function' || CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true)) {
           if (await this.aiAnswerFlow(text, alive)) return;
         }
         if (!Scanner.map || Date.now() - Scanner.map.scannedAt > 1500) Scanner.scan();
@@ -3620,29 +4727,195 @@
       }
     },
 
-    /** voice control of the glass itself (works in both languages) */
-    aiAnswerFlow: async function (text, alive) {
-      // Host-supplied brain (CONFIG.aiAnswer): answers open questions the rule
-      // companion can't. Guardrails still apply — the reply is linted against
-      // CP_LINT (no diagnose/treat/directive wording), truncated, attributed
-      // as the host AI, and announced with a 'voicelayer:companion' event so
-      // host analytics can record it.
-      let reply = null;
+    /** Jev System One (POST /api/voice/classify): classify multilingual/colloquial utterance into allowlisted UI actions */
+    classifyWithJev: async function (utterance) {
+      if (!CONFIG.apiBase) return null;
+      if (!Scanner.map) Scanner.scan();
+      Behavior.updateViewport();
+      const dp = Behavior.deicticProduct();
+      const state = {
+        activeProduct: dp ? dp.name : null,
+        catalogProducts: Inventory.items().slice(0, 40).map(function (p) { return p.name; }),
+        sections: (Scanner.map && Scanner.map.headings ? Scanner.map.headings : []).slice(0, 20).map(function (h) { return h.text; })
+      };
       try {
+        return await Net.classify(utterance, LANG, state);
+      } catch (e) {
+        log('jev classify unavailable:', e && e.message);
+        return null;
+      }
+    },
+
+    /** Strictly maps an allowlisted Jev UI action choice into a canonical VoiceLayer intent (zero raw model execution authority) */
+    mapJevToIntent: function (res, raw) {
+      if (!res || !res.allowlisted || res.blocked) return null;
+      const qtyPrefix = (res.quantity && res.quantity > 1) ? (res.quantity + ' ') : '';
+      const prodTarget = (res.targetProduct && res.targetProduct !== '__deictic__') ? res.targetProduct : 'this';
+      let out = null;
+      switch (res.intent) {
+        case 'cart_add_deictic':
+          out = { type: 'click', arg: 'add ' + qtyPrefix + 'this to cart', raw: raw };
+          break;
+        case 'cart_add_product':
+          out = { type: 'click', arg: 'add ' + qtyPrefix + prodTarget + ' to cart', raw: raw };
+          break;
+        case 'cart_status':
+          out = { type: 'cart', raw: raw };
+          break;
+        case 'inv_all':
+          out = { type: 'inv', act: 'all', raw: raw };
+          break;
+        case 'inv_cheapest':
+          out = { type: 'inv', act: 'cheapest', raw: raw };
+          break;
+        case 'inv_priciest':
+          out = { type: 'inv', act: 'priciest', raw: raw };
+          break;
+        case 'inv_price_deictic':
+          out = { type: 'inv', act: 'price', arg: '', raw: raw };
+          break;
+        case 'inv_price_product':
+          out = { type: 'inv', act: 'price', arg: prodTarget === 'this' ? '' : prodTarget, raw: raw };
+          break;
+        case 'inv_stock_deictic':
+          out = { type: 'inv', act: 'stock', arg: '', raw: raw };
+          break;
+        case 'inv_stock_product':
+          out = { type: 'inv', act: 'stock', arg: prodTarget === 'this' ? '' : prodTarget, raw: raw };
+          break;
+        case 'spatial_where':
+          out = { type: 'spatial', act: 'where', raw: raw };
+          break;
+        case 'spatial_looking':
+          out = { type: 'spatial', act: 'looking', raw: raw };
+          break;
+        case 'spatial_history':
+          out = { type: 'spatial', act: 'history', raw: raw };
+          break;
+        case 'profile_who':
+          out = { type: 'profile', act: 'who', raw: raw };
+          break;
+        case 'profile_recommend':
+          out = { type: 'profile', act: 'recommend', arg: '', raw: raw };
+          break;
+        case 'scroll_down':
+          out = { type: 'scrollby', dir: 'down', raw: raw };
+          break;
+        case 'scroll_up':
+          out = { type: 'scrollby', dir: 'up', raw: raw };
+          break;
+        case 'scroll_top':
+          out = { type: 'scrollto', where: 'top', raw: raw };
+          break;
+        case 'scroll_bottom':
+          out = { type: 'scrollto', where: 'bottom', raw: raw };
+          break;
+        case 'page_about':
+          out = { type: 'about', raw: raw };
+          break;
+        case 'page_read':
+          out = { type: 'read', raw: raw };
+          break;
+        case 'page_back':
+          out = { type: 'history', raw: raw };
+          break;
+        case 'assistant_stop':
+          out = { type: 'stop', raw: raw };
+          break;
+        case 'assistant_close':
+          out = { type: 'close', raw: raw };
+          break;
+        case 'assistant_help':
+          out = { type: 'help', raw: raw };
+          break;
+        default:
+          return null;
+      }
+      if (out) {
+        out.viaJev = true;
+        out.jevAction = res.intent;
+        out.confidence = res.confidence;
+      }
+      return out;
+    },
+
+    /** Universal Handoff inspector: evaluates deterministic bypass first, then Jev allowlisted classifier */
+    resolveIntent: async function (text) {
+      let it = parse(text);
+      if (it.type === 'unknown' || it.soft) { const sk = parseSkills(text); if (sk) it = sk; }
+      if (it.type !== 'unknown') {
+        it.bypass = true;
+        return { bypass: true, blocked: false, provider: 'deterministic-bypass', intent: it, jev: null };
+      }
+      const jevRes = await this.classifyWithJev(text);
+      if (jevRes && jevRes.blocked) {
+        return { bypass: false, blocked: true, provider: jevRes.provider || 'jev', intent: { type: 'blocked', raw: text }, jev: jevRes };
+      }
+      if (jevRes && jevRes.allowlisted && jevRes.intent && jevRes.intent !== 'needs_open_qa') {
+        const mapped = this.mapJevToIntent(jevRes, text);
+        if (mapped) return { bypass: false, blocked: false, provider: jevRes.provider || 'jev', intent: mapped, jev: jevRes };
+      }
+      return { bypass: false, blocked: false, provider: (jevRes && jevRes.provider) || 'needs_open_qa', intent: it, jev: jevRes };
+    },
+
+    /** full spatial + inventory + profile + behavioral context payload for host AI or analytics */
+    contextSnapshot: function () {
+      if (!Scanner.map) Scanner.scan();
+      Behavior.updateViewport();
+      return {
+        language: LANG,
+        page: { title: document.title, path: location.pathname, hash: location.hash },
+        spatial: Behavior.snapshot(),
+        inventory: Inventory.json().slice(0, 30),
+        cart: Inventory.cart(),
+        profile: Profile.get(),
+        signals: Signals.all(),
+        companion: Companion.enabled() ? Companion.insights.map(function (x) { return { rule: x.rule, kind: x.kind, text: x.text }; }) : []
+      };
+    },
+
+    /** call the built-in server AI brain (POST /api/voice/ask) with the live context snapshot */
+    askServerAI: async function (question) {
+      if (!CONFIG.apiBase) return null;
+      return Net.ask(question, LANG, this.contextSnapshot());
+    },
+
+    /** host-supplied or built-in server brain (CONFIG.aiAnswer) with rich spatial/inventory/profile context + optional safe action handoff */
+    aiAnswerFlow: async function (text, alive) {
+      let reply = null, action = null;
+      const ctx = this.contextSnapshot();
+      try {
+        const providerFn = typeof CONFIG.aiAnswer === 'function'
+          ? function () { return CONFIG.aiAnswer(text, ctx); }
+          : ((CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true) && CONFIG.apiBase
+            ? function () { return Net.ask(text, LANG, ctx); }
+            : null);
+        if (!providerFn) return false;
         const r = await Promise.race([
-          Promise.resolve().then(() => CONFIG.aiAnswer(text, { language: LANG })),
+          Promise.resolve().then(providerFn),
           new Promise((res) => setTimeout(() => res(null), 12000)),
         ]);
-        reply = r && typeof r === 'object' ? (r.text || '') : (typeof r === 'string' ? r : '');
+        if (r && typeof r === 'object') {
+          reply = r.text || '';
+          action = r.action && typeof r.action === 'object' ? r.action : null;
+        } else if (typeof r === 'string') {
+          reply = r;
+        }
       } catch (e) { log('aiAnswer failed:', e && e.message); }
       reply = String(reply || '').trim();
       if (!reply || !alive()) return false;
       const fallback = LANG === 'es'
         ? (Companion.enabled() ? 'Puedo compartir información general, pero para lo personal me limito a tus propios datos. Pregúntame por tus lecturas.' : 'Aún no tengo una respuesta para eso aquí.')
-        : (Companion.enabled() ? 'I can share general information here, but for anything personal I stick to your own data — ask me about your readings.' : 'I don't have an answer for that here yet.');
+        : (Companion.enabled() ? 'I can share general information here, but for anything personal I stick to your own data — ask me about your readings.' : 'I don\'t have an answer for that here yet.');
       const safe = CP_LINT.test(reply) ? fallback : reply.slice(0, 600);
       try { window.dispatchEvent(new CustomEvent('voicelayer:companion', { detail: { type: 'ai_answer', chars: safe.length, linted: safe !== reply.slice(0, 600) } })); } catch (e) {}
       await this.say(safe);
+      if (action && alive() && safe === reply.slice(0, 600)) {
+        const tok = this.token;
+        if (action.type === 'go' && action.target) await this.cmdGo({ type: 'go', arg: String(action.target), raw: text }, tok, alive);
+        else if (action.type === 'click' && action.target) await this.cmdClick({ type: 'click', arg: String(action.target), raw: text }, tok, alive);
+        else if (action.type === 'highlight' && action.target) await this.cmdFind({ type: 'find', arg: String(action.target), raw: text }, tok, alive);
+      }
       return true;
     },
 
@@ -3710,6 +4983,11 @@
         case 'formset': return this.cmdFormSet(it, tok, alive);
         case 'formundo': return this.cmdFormUndo();
         case 'mem': return this.cmdMem(it, tok, alive);
+        case 'inv': return this.cmdInv(it, tok, alive);
+        case 'cart': return this.cmdCart(it, tok, alive);
+        case 'spatial': return this.cmdSpatial(it, tok, alive);
+        case 'profile': return this.cmdProfile(it, tok, alive);
+        case 'action': return this.cmdAction(it, tok, alive);
         case 'about': return this.cmdAbout();
         case 'read': return this.cmdRead(it, tok, alive);
         case 'find': return this.cmdFind(it, tok, alive);
@@ -3898,7 +5176,24 @@
     },
 
     cmdClick: async function (it, tok, alive) {
-      const q = it.arg;
+      let q = it.arg, qty = 1;
+      const QNUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10 };
+      const qm = norm(q).match(/^(add|anadir|agrega|agregar)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)(?:\s+(?:of|de))?\s+(.+?)\s+(to cart|al carrito)$/);
+      if (qm) {
+        qty = clamp(parseInt(qm[2], 10) || QNUM[qm[2]] || 1, 1, 10);
+        q = qm[1] + ' ' + qm[3] + ' ' + qm[4];
+      }
+      // deictic resolution: "add this to cart" / "add 2 of these to cart" / "buy this" / "añade esto al carrito" resolves against the hovered or active product card
+      if (/\b(this|these|this one|this item|this product|esto|estos|estas|este|esta)\b/.test(norm(q))) {
+        const dp = Behavior.deicticProduct();
+        if (dp) {
+          const btn = dp.ctaEl || (dp.el && dp.el.querySelector && dp.el.querySelector('button, [role="button"], input[type="submit"], a[href]'));
+          if (btn && isVisible(btn)) {
+            const c = { kind: btn.tagName === 'A' ? 'link' : 'button', text: clean(btn.innerText || btn.getAttribute('aria-label') || 'Add to cart'), ctx: dp.name, el: btn, disabled: isDisabled(btn) };
+            return this.doClick(c, tok, alive, { qty: qty });
+          }
+        }
+      }
       const all = clickCandidates();
       const scoreOf = function (c) { return Math.max(score(q, c.text), c.ctx ? score(q, c.ctx + ' ' + c.text) : 0, c.ctx ? score(q, c.text + ' ' + c.ctx) : 0); };
       let hits = all.map(function (c) { return { item: c, score: scoreOf(c) }; }).filter(function (h) { return h.score >= 0.6; })
@@ -3913,15 +5208,16 @@
       if (close.length > 1) {
         const opts = close.slice(0, 5).map(function (h) {
           const c = h.item;
-          return { label: describe(c), pick: c.ctx || c.text, el: c.el, run: function (t, a) { return VL.doClick(c, t, a, {}); } };
+          return { label: describe(c), pick: c.ctx || c.text, el: c.el, run: function (t, a) { return VL.doClick(c, t, a, { qty: qty }); } };
         });
         return this.askChoose(M.clickChoose(close.length, q), opts, tok);
       }
-      return this.doClick(top.item, tok, alive, {});
+      return this.doClick(top.item, tok, alive, { qty: qty });
     },
 
     /** The full click pipeline: guards → confirm → ring → pause (cancellable) → real events → read-back receipt */
     doClick: async function (c, tok, alive, o) {
+      o = o || {};
       const label = describe(c);
       if (!c.el.isConnected || !isVisible(c.el)) return this.say(M.notVisible(label));
       if (isDisabled(c.el)) return this.say(M.disabled(label));
@@ -3934,7 +5230,7 @@
         UI.showRings([{ getRect: rectOf(c.el) }], 20000);
         this.pending = {
           kind: 'confirm', label: M.clickWhat(c.text), until: performance.now() + 20000,
-          run: function (t, a) { return VL.doClick(c, t, a, { confirmed: true }); }
+          run: function (t, a) { return VL.doClick(c, t, a, Object.assign({}, o, { confirmed: true })); }
         };
         return this.say(M.confirmAsk(label));
       }
@@ -3958,16 +5254,27 @@
         const mo = new MutationObserver(function (ms) { ms.forEach(function (m) { if (!(m.target.closest && m.target.closest(SKIP_SEL))) mutations++; }); });
         mo.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
 
+        const qty = clamp(Number(o.qty) || 1, 1, 10);
         const href = c.el.tagName === 'A' ? c.el.href : '';
         if (href && !/^#/.test(c.el.getAttribute('href') || '')) this.markNavigating();
-        this.fireClick(c.el);
+        Behavior.recordClick(c.el);
+        const cardRoot = c.el.closest && c.el.closest('[data-product-id], [data-vl-product], [itemtype*="Product"], article, .card, li');
+        const qtyInput = (isCartAction && qty > 1 && cardRoot) ? cardRoot.querySelector('input[type="number"], input[name*="qty" i], input[name*="quantity" i]') : null;
+        if (qtyInput && isVisible(qtyInput) && !qtyInput.disabled && !qtyInput.readOnly) {
+          Forms.setValue(qtyInput, String(qty));
+          this.fireClick(c.el);
+        } else {
+          for (let qi = 0; qi < (isCartAction ? qty : 1); qi++) {
+            this.fireClick(c.el);
+          }
+        }
 
         // ---- read-back: wait for the page to react (poll up to ~1.6s) ----
         let after = before, changed = false;
         const t0 = performance.now();
         while (performance.now() - t0 < 1600) {
           await sleep(100);
-          if (isCartAction) { after = readCart(); if (after !== before) { changed = true; break; } }
+          if (isCartAction) { after = readCart(); if (after !== before && (qty <= 1 || after >= before + qty)) { changed = true; break; } }
           else if (mutations > 0 || location.href !== url0) { await sleep(150); break; }
         }
         mo.disconnect();
@@ -3976,7 +5283,8 @@
 
         if (isCartAction && before != null && after != null) {
           if (after > before) {
-            this.receipt({ action: 'click', label: label, status: 'succeeded', verification: 'read_back', before: before, after: after });
+            Demand.record({ type: 'cart_add', product: c.ctx || label, qty: after - before });
+            this.receipt({ action: 'click', label: label, status: 'succeeded', verification: 'read_back', before: before, after: after, qty: qty });
             return this.say(M.doneCart(label, before, after), { verified: true });
           }
           this.receipt({ action: 'click', label: label, status: 'unknown', verification: 'none', before: before, after: after });
@@ -4043,6 +5351,173 @@
     ask: function (text, label, run, onNo, o) {
       this.pending = { kind: 'confirm', strict: true, label: label, until: performance.now() + 25000, run: run, onNo: onNo };
       return this.say(text, o);
+    },
+
+    /* ------------------------------------------------------------ skills: inventory, cart, spatial, profile, actions (v0.6.0 / v0.7.0) */
+    cmdInv: async function (it, tok, alive) {
+      const S = I.sk.inv;
+      const all = Inventory.items();
+      if (!all.length) return this.say(S.empty);
+      const cur = (all[0].price && (all[0].price.match(/[$€£¥]/) || [])[0]) || (LANG === 'es' ? '€' : '$');
+      switch (it.act) {
+        case 'all': {
+          const inItems = all.filter(function (p) { return p.inStock !== false; });
+          const outItems = all.filter(function (p) { return p.inStock === false; });
+          const list = andList((inItems.length ? inItems : all).slice(0, 6).map(function (p) { return p.name + (p.price ? ' (' + p.price + ')' : ''); }));
+          this.receipt({ action: 'inventory_query', label: 'catalog overview', status: 'succeeded', verification: 'none', detail: all.length + ' items' });
+          return this.say(S.stockAll(inItems.length, outItems.length, list));
+        }
+        case 'under': {
+          const matches = Inventory.query({ maxPrice: it.max, inStockOnly: false });
+          const list = andList(matches.slice(0, 6).map(function (p) { return p.name + ' (' + p.price + (p.inStock === false ? ', ' + (LANG === 'es' ? 'agotado' : 'out of stock') : '') + ')'; }));
+          if (matches.length) {
+            UI.showRings(matches.slice(0, 5).filter(function (p) { return liveEl(p.el); }).map(function (p, i) { return { n: i + 1, getRect: rectOf(p.el) }; }), CONFIG.highlightMs);
+          }
+          this.receipt({ action: 'inventory_query', label: 'under ' + cur + it.max, status: 'succeeded', verification: 'none', detail: matches.length + ' matches' });
+          return this.say(S.under(it.max, cur, list));
+        }
+        case 'cheapest':
+        case 'priciest': {
+          const sorted = Inventory.query({ sort: it.act === 'cheapest' ? 'price_asc' : 'price_desc' }).filter(function (p) { return p.value > 0; });
+          if (!sorted.length) return this.say(S.empty);
+          const pick = sorted[0];
+          if (liveEl(pick.el)) {
+            await scrollToEl(pick.el, 'center', tok, alive); if (!alive()) return;
+            UI.showRings([{ getRect: rectOf(pick.el) }], CONFIG.highlightMs);
+            Behavior.setActiveProduct(pick);
+          }
+          this.receipt({ action: 'inventory_query', label: it.act + ': ' + pick.name, status: 'succeeded', verification: 'none' });
+          return this.say(it.act === 'cheapest' ? S.cheapest(pick.name, pick.price) : S.priciest(pick.name, pick.price));
+        }
+        case 'compare': {
+          const cmp = Inventory.compare(it.a, it.b);
+          if (!cmp) {
+            Demand.record({ type: 'unmatched_product', query: (it.a || '') + (it.b ? ' vs ' + it.b : '') });
+            return this.say(S.compareMiss((it.a || '') + (it.b ? ' vs ' + it.b : '')));
+          }
+          const els = [cmp.a, cmp.b].filter(function (p) { return liveEl(p.el); });
+          if (els.length) UI.showRings(els.map(function (p, i) { return { n: i + 1, getRect: rectOf(p.el) }; }), CONFIG.highlightMs);
+          UI.showCompare(cmp.a, cmp.b);
+          Demand.record({ type: 'inventory_compare', product: cmp.a.name + ' vs ' + cmp.b.name });
+          this.receipt({ action: 'inventory_compare', label: cmp.a.name + ' vs ' + cmp.b.name, status: 'succeeded', verification: 'none' });
+          return this.say(S.compare(cmp.a, cmp.b));
+        }
+        case 'stock':
+        case 'price': {
+          let p = it.arg ? Inventory.find(it.arg) : Behavior.deicticProduct();
+          if (!p) {
+            Demand.record({ type: 'unmatched_product', query: it.arg || '' });
+            const avail = andList(all.slice(0, 5).map(function (x) { return x.name; }));
+            return this.say(S.noMatch(it.arg || (LANG === 'es' ? 'esto' : 'this item'), avail));
+          }
+          Behavior.setActiveProduct(p);
+          if (liveEl(p.el)) {
+            await scrollToEl(p.el, 'center', tok, alive); if (!alive()) return;
+            UI.showRings([{ getRect: rectOf(p.el) }], CONFIG.highlightMs);
+          }
+          this.receipt({ action: 'inventory_' + it.act, label: p.name, status: 'succeeded', verification: 'none', detail: (p.price || '') + ' / ' + (p.inStock !== false ? 'in_stock' : 'out_of_stock') });
+          if (it.act === 'stock') {
+            return this.say(p.inStock !== false ? S.stockYes(p.name, p.price, p.description) : S.stockNo(p.name, p.price));
+          }
+          return this.say(S.priceOf(p.name, p.price, p.inStock !== false, p.description));
+        }
+      }
+      return this.say(S.empty);
+    },
+
+    cmdCart: function () {
+      const S = I.sk.inv;
+      const c = Inventory.cart();
+      if (c.count === null) return this.say(S.cartUnknown);
+      const itemNames = c.items && c.items.length ? andList(c.items.slice(0, 5).map(function (x) { return (x.qty && x.qty > 1 ? x.qty + '× ' : '') + (x.name || x.id); })) : '';
+      this.receipt({ action: 'cart_status', label: 'cart', status: 'succeeded', verification: 'read_back', detail: 'count=' + c.count });
+      return this.say(S.cartCount(c.count, c.total, itemNames), { verified: true });
+    },
+
+    cmdSpatial: function (it) {
+      const S = I.sk.sp;
+      Behavior.updateViewport();
+      const snap = Behavior.snapshot();
+      if (it.act === 'where') {
+        const dp = Behavior.deicticProduct();
+        this.receipt({ action: 'spatial_where', label: snap.currentSection || document.title, status: 'succeeded', verification: 'read_back' });
+        return this.say(S.where(document.title, snap.currentSection, dp, snap.scrollDepthPct, snap.activeModal), { verified: true });
+      }
+      if (it.act === 'looking') {
+        const dp = Behavior.deicticProduct();
+        if (dp) {
+          if (liveEl(dp.el)) UI.showRings([{ getRect: rectOf(dp.el) }], CONFIG.highlightMs);
+          this.receipt({ action: 'spatial_looking', label: dp.name, status: 'succeeded', verification: 'read_back' });
+          return this.say(S.lookingProd(dp), { verified: true });
+        }
+        if (snap.currentSection) {
+          return this.say(S.lookingSec(snap.currentSection, ''));
+        }
+        return this.say(S.lookingNone);
+      }
+      if (it.act === 'history') {
+        const prods = (snap.viewedProducts || []).map(function (p) { return p.name || p; });
+        const secs = Object.keys(snap.sectionDwell || {});
+        return this.say(S.history(prods, secs, snap.interests || []));
+      }
+      return this.say(S.where(document.title, snap.currentSection, Behavior.deicticProduct(), snap.scrollDepthPct, snap.activeModal));
+    },
+
+    cmdProfile: async function (it, tok, alive) {
+      const S = I.sk.pr;
+      if (it.act === 'goal') {
+        const g = Profile.addGoal(it.val);
+        if (!g) return this.say(I.sk.m.refuse);
+        Demand.record({ type: 'goal', goal: g });
+        const recObj = Inventory.recommend(it.val);
+        const recs = Array.isArray(recObj) ? recObj : (recObj && recObj.items ? recObj.items : []);
+        const recList = recs.length ? andList(recs.slice(0, 2).map(function (p) { return p.name + (p.price ? ' (' + p.price + ')' : ''); })) : '';
+        this.receipt({ action: 'profile_goal', label: g, status: 'succeeded', verification: 'none' });
+        return this.say(S.goalSaved(g, recList));
+      }
+      if (it.act === 'who') {
+        const pr = Profile.get();
+        return this.say(S.who(pr.name, pr.goals, pr.interests));
+      }
+      if (it.act === 'recommend') {
+        const recObj = Inventory.recommend(it.arg || '');
+        const recs = Array.isArray(recObj) ? recObj : (recObj && recObj.items ? recObj.items : []);
+        if (!recs.length) return this.say(S.recNone);
+        const pr = Profile.get();
+        const whyParts = [];
+        if (it.arg) whyParts.push('“' + it.arg + '”');
+        if (pr.goals.length) whyParts.push((LANG === 'es' ? 'tus objetivos (' : 'your goals (') + pr.goals.slice(0, 2).join(', ') + ')');
+        if (pr.interests.length) whyParts.push((LANG === 'es' ? 'lo que has explorado (' : 'what you’ve explored (') + pr.interests.slice(0, 2).join(', ') + ')');
+        const why = whyParts.length ? andList(whyParts) : (recObj && recObj.reason ? recObj.reason : (LANG === 'es' ? 'el catálogo de esta página' : 'this page’s catalog'));
+        const list = andList(recs.map(function (p) { return p.name + (p.price ? ' (' + p.price + ')' : '') + (p.description ? ' — ' + short(p.description, 55) : ''); }));
+        const els = recs.filter(function (p) { return liveEl(p.el); });
+        if (els.length) {
+          await scrollToEl(els[0].el, 'center', tok, alive); if (!alive()) return;
+          UI.showRings(els.map(function (p, i) { return { n: i + 1, getRect: rectOf(p.el) }; }), CONFIG.highlightMs);
+        }
+        const disc = I.cp && I.cp.disc ? I.cp.disc : (LANG === 'es' ? 'Información general del catálogo, no consejo médico.' : 'General catalog information, not medical advice.');
+        this.receipt({ action: 'inventory_recommend', label: recs.map(function (p) { return p.name; }).join(', '), status: 'succeeded', verification: 'none' });
+        return this.say(S.rec(why, list, disc));
+      }
+    },
+
+    cmdAction: async function (it, tok, alive) {
+      const a = it.action;
+      if (!a || typeof a.handler !== 'function') return this.cmdUnknown(it);
+      const executeAction = async function () {
+        try {
+          const res = await a.handler(VL.contextSnapshot());
+          VL.receipt({ action: 'custom_action', label: a.label || a.id, status: 'succeeded', verification: 'none' });
+          if (typeof res === 'string' && res.trim()) return VL.say(res.trim());
+          return VL.say(LANG === 'es' ? ('Listo — ejecuté ' + (a.label || a.id) + '.') : ('Done — ran ' + (a.label || a.id) + '.'));
+        } catch (e) {
+          return VL.say(M.error);
+        }
+      };
+      if (a.confirm) {
+        return this.ask(M.confirmAsk(a.label || a.id), a.label || a.id, executeAction);
+      }
+      return executeAction();
     },
 
     /* ------------------------------------------------------------ skills: forms */
@@ -4204,6 +5679,10 @@
       const res = await Knowledge.ask(text); if (!alive()) return true;
       if (!res.found || (!question && res.score < 0.75)) {
         if (!question) return false;                                              // not a question and no strong match: let the normal "didn't understand" path run
+        Demand.record({ type: 'unmatched_question', query: text });
+        if (typeof CONFIG.aiAnswer === 'function' || CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true) {
+          if (await this.aiAnswerFlow(text, alive)) return true;
+        }
         Knowledge.emit('no_answer');
         const near = rank(goCandidates(), res.K.join(' '), 0.6)[0];
         if (near) { this.pending = { kind: 'confirm', strict: true, label: K.that, until: performance.now() + 25000, run: function (a, b) { return VL.goTo(near.item, a, b); } }; await this.say(K.none + K.noneSuggest(near.item.label)); }
@@ -4225,7 +5704,7 @@
     },
     knowledgeGo: async function (p, tok, alive) {
       if (liveEl(p.el) && !(p.url && p.url.split('#')[0] !== location.href.split('#')[0])) {
-        const ok = await scrollToEl(p.el, 'top', tok, alive); if (!ok || !alive()) return;
+        const ok = await scrollToEl(p.el, 'top', tok, alive); if (!alive()) return;
         UI.showRings([{ getRect: rectOf(p.el) }], CONFIG.highlightMs);
         return this.say(M.going(short(p.q, 60)));
       }
@@ -4244,6 +5723,7 @@
       const cc = rank(clickCandidates(), it.arg, 0.8, function (c) { return c.text; });
       if (gc.length) return this.say(M.unkGo(gc[0].item.label));
       if (cc.length) return this.say(M.unkClick(cc[0].item.text));
+      Demand.record({ type: 'unmatched_question', query: it.raw || it.arg || '' });
       return this.say(M.unknown(short(it.raw, 60)));
     }
   };
@@ -4261,7 +5741,7 @@
     say: function (t) { return VL.say(t); },
     /** run a command as if it had been typed: VoiceLayer.run('go to pricing') */
     run: function (t) { UI.addLine('user', t); return VL.run(t); },
-    /** visitor-control API (same as the panel buttons) */
+    /**visitor-control API (same as the panel buttons) */
     minimize: function () { VL.minimize(); },
     turnOff: function () { VL.turnOff(); },
     show: function () { VL.restore(true); },
@@ -4269,8 +5749,49 @@
     wake: function () { return VL.wake(); },
     pause: function () { VL.goToSleep(); },
     get awake() { return !!VL.woke; },
-    /** feed the Companion fresh data: VoiceLayer.setSignals({ metrics:{…}, tasks:[…] }) */
-    setSignals: function (s) { Companion.setSignals(s); },
+    /** feed closed host signals (array of {type,label,sku} or Companion { metrics:{…}, tasks:[…] }) */
+    setSignals: function (s) { return Signals.set(s); },
+    getSignals: function () { return Signals.all(); },
+    /** feed live catalog / inventory items: VoiceLayer.setInventory([...]) */
+    setInventory: function (items) { return Inventory.set(items); },
+    /** feed live cart state: VoiceLayer.setCart({ count, total, items }) */
+    setCart: function (c) { return Inventory.setCart(c); },
+    /** feed / update visitor profile context: VoiceLayer.setProfile({ name, tier, goals, preferences }) */
+    setProfile: function (p) { return Profile.set(p); },
+    getProfile: function () { return Profile.get(); },
+    /** full spatial + inventory + profile + behavioral context snapshot */
+    getContext: function () { return VL.contextSnapshot(); },
+    /** query the server AI brain (POST /api/voice/ask) with live page/inventory/profile context */
+    askAI: function (q) { return VL.askServerAI(q); },
+    /** Universal Handoff intent classifier: deterministic exact-command bypass first, then Jev allowlisted UI actions */
+    classifyIntent: function (q) { return VL.resolveIntent(String(q || '')); },
+    /** register a custom voice-callable host action */
+    registerAction: function (a, b) { return Actions.register(a, b); },
+    demand: {
+      get events() { return Demand.list(); },
+      record: function (ev) { return Demand.record(ev); }
+    },
+    inventory: {
+      get items() { return Inventory.json(); },
+      get cart() { return Inventory.cart(); },
+      query: function (f) { return Inventory.query(f).map(function (p) { return { id: p.id, name: p.name, price: p.price, value: p.value, inStock: p.inStock, category: p.category, description: p.description }; }); },
+      compare: function (a, b) { return Inventory.compare(a, b); },
+      recommend: function (g) { const r = Inventory.recommend(g); const arr = Array.isArray(r) ? r : (r && r.items ? r.items : []); return arr.map(function (p) { return { id: p.id, name: p.name, price: p.price, value: p.value, inStock: p.inStock }; }); }
+    },
+    profile: {
+      get data() { return Profile.get(); },
+      set: function (p) { return Profile.set(p); },
+      addGoal: function (g) { return Profile.addGoal(g); }
+    },
+    behavior: {
+      get snapshot() { return Behavior.snapshot(); },
+      get activeProduct() { const p = Behavior.deicticProduct(); return p ? { id: p.id, name: p.name, price: p.price, inStock: p.inStock } : null; },
+      get topInterests() { return Behavior.topInterests(); }
+    },
+    actions: {
+      get list() { return Actions.list(); },
+      register: function (a, b) { return Actions.register(a, b); }
+    },
     companion: {
       get enabled() { return Companion.enabled(); },
       get preset() { return Companion.cfg ? Companion.cfg.preset : null; },

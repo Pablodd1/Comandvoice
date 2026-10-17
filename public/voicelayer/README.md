@@ -217,3 +217,16 @@ Server voices: defaults `aura-2-athena-en` and `aura-2-selena-es`. Override with
 Events: `voicelayer:memory`, `voicelayer:knowledge`. Demo pages: `demo-account.html`, `demo-account-policies.html`.
 
 Honest limits: the female voice is not audibly verified without a Deepgram key. Knowledge is keyword retrieval. Memory is per device. Forms handle text, email, tel, textarea and select only (not date, checkbox, radio, file).
+
+## 11. Spatial Intelligence, Live Inventory & Behavioral Learning (v0.5 – v0.6.0)
+
+| Feature | Configuration / API | Voice Commands (EN & ES) |
+|---|---|---|
+| **Live Inventory & Catalog Engine** | `inventory: { autoScan: true, items: [...], url: '/api/catalog' }`, `VoiceLayer.setInventory([...])`, `VoiceLayer.inventory.query({ maxPrice, category, inStockOnly, sort })` | *"What's in stock?"*, *"How much is Aurora One?"*, *"Show items under $80"*, *"What's the cheapest item?"*, *"Compare Aurora One and Pulse Earbuds"* / *"¿Qué hay en stock?"*, *"¿Cuánto cuesta…?"*, *"Artículos por menos de 80"* |
+| **Live Cart Awareness** | Automatic DOM counter scan (`[data-cart-count]`) + `VoiceLayer.setCart({ count, total, items })` | *"What's in my cart?"*, *"Cart total"* / *"¿Qué hay en mi carrito?"* |
+| **Spatial & Deictic ("This") Awareness** | `behavior: { enabled: true, dwellMs: 1200 }`, `VoiceLayer.behavior.snapshot`, `VoiceLayer.behavior.activeProduct` | *"Where am I?"*, *"What am I looking at?"*, *"How much is this?"*, *"Is this in stock?"*, *"Add this to cart"*, *"What have I looked at?"* / *"¿Dónde estoy?"*, *"¿Qué estoy viendo?"*, *"¿Cuánto cuesta esto?"*, *"Añade esto al carrito"* |
+| **User Profile & Goal Recommendations** | `profile: { name, tier, goals, preferences }`, `VoiceLayer.setProfile({...})`, `VoiceLayer.profile.addGoal('sleep')` | *"I'm looking for wireless headphones"*, *"My goal is better battery"*, *"What do you recommend for me?"*, *"What is my profile?"* / *"Busco auriculares inalámbricos"*, *"¿Qué me recomiendas?"* |
+| **Custom Host Actions** | `actions: [{ id, label, phrases: [...], confirm: false, handler: (ctx) => '...' }]`, `VoiceLayer.registerAction({...})` | Matches any phrase registered by the host site; optional yes/no confirmation ceremony before execution. |
+| **Context-Rich AI Brain (`aiAnswer`)** | `aiAnswer: async (question, ctx) => ({ text, action: { type: 'go'|'click'|'highlight', target } })` | Receives full `ctx` (`language`, `page`, `spatial`, `inventory`, `cart`, `profile`, `companion`), lints reply against `CP_LINT`, and optionally triggers a safe page action. |
+| **Top-Dock Glass (`dock: 'top'`)** | `glass: { dock: 'top', height: 0.42 }` | Renders a 1:1 readable top-docked glass header bar with a live spatial context pill (`Section · Active Product`) and proportional voice-reactive circle. |
+

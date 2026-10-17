@@ -1,0 +1,34 @@
+# ============================================================================
+# VoiceLayer v0.7.0 — Server Environment Variables (.dev.vars)
+# ============================================================================
+# This file is loaded automatically by Cloudflare Wrangler in local development
+# and is git-ignored (.gitignore) so your API keys are never committed.
+# ============================================================================
+
+# --- 1. xAI GROK 3.0 VOICE + BRAIN & DEEPSEEK FAST BRAIN --------------------
+XAI_API_KEY=
+GROK_API_KEY=
+DEEPSEEK_API_KEY=
+VOICELAYER_GROK_VOICE=ara
+
+# --- 2. DEEPGRAM VOICE I/O (Fallback STT / TTS) -----------------------------
+DEEPGRAM_API_KEY=
+VOICELAYER_VOICE_EN=aura-2-athena-en
+VOICELAYER_VOICE_ES=aura-2-selena-es
+
+# --- 3. ADDITIONAL AI PROVIDERS (POST /api/voice/ask) -----------------------
+GEMINI_API_KEY=
+OPENAI_API_KEY=
+GROQ_API_KEY=
+ANTHROPIC_API_KEY=
+VOICELAYER_AI_PROVIDER=
+VOICELAYER_AI_MODEL=
+
+# --- 4. JEV SYSTEM ONE INTENT CLASSIFIER (POST /api/voice/classify) ---------
+TYPESAFE_API_KEY=
+JEV_MODEL=jev-latest
+
+# --- 5. OWNER SWITCHES & CORS SECURITY --------------------------------------
+VOICELAYER_ENABLED=true
+VOICELAYER_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+VOICELAYER_ALLOW_ANY_ORIGIN=false

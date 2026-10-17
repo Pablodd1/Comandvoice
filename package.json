@@ -3,7 +3,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "start": "node scripts/server.mjs",
+    "build:widget": "node scripts/build-widget.mjs",
+    "build": "node scripts/build-widget.mjs && vite build",
     "preview": "wrangler pages dev",
     "deploy": "npm run build && wrangler pages deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings"

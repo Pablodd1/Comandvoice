@@ -357,20 +357,41 @@ button:focus-visible, input:focus-visible {
 .vl-root[data-ui="glass"][data-pass="false"] .vl-glass { pointer-events: auto; }          /* passThrough:false → the glass catches clicks */
 
 
-/* ---- DOCK: 'top' — the glass becomes a band pinned to the top of the page.
-   The whole full-height scene is scaled into the band (transform), so every
-   vh-based size inside stays exactly as designed; the site below stays
-   visible and fully usable. ---- */
+/* ---- DOCK: 'top' — the glass becomes a responsive band pinned to the top of the page.
+   Controls, captions, cards and input stay at native 1:1 readable scale across the full viewport width,
+   while the voice orb stage scales proportionally to the band height. ---- */
 .vl-root[data-dock="top"] .vl-glass {
-  inset: 0 0 auto 0; height: var(--vl-dock-h, 42vh); overflow: hidden;
+  inset: 0 0 auto 0; height: auto; min-height: var(--vl-dock-h, 42vh); max-height: 84vh; overflow-x: hidden; overflow-y: auto;
   box-shadow: inset 0 0 0 1px rgba(170,200,255,.22), inset 0 1px 0 rgba(255,255,255,.28), 0 18px 50px rgba(2,6,22,.45);
   border-bottom: 1px solid rgba(170,200,255,.28);
 }
 .vl-root[data-dock="top"] .vl-glass .vl-g-ui {
-  top: 0; height: 100vh; width: 100%;
-  transform: scale(var(--vl-dock-scale, .42)); transform-origin: top center;
+  position: relative; inset: auto; min-height: var(--vl-dock-h, 42vh); width: 100%;
+  transform: none; padding: max(8px, env(safe-area-inset-top, 0px)) 16px 12px;
 }
 .vl-root[data-dock="top"] .vl-glass .vl-g-pane { inset: 0; }
+.vl-root[data-dock="top"] .vl-g-stage { flex-direction: column; gap: 4px; padding: 2px 0 6px; }
+.vl-root[data-dock="top"] .vl-g-tap, .vl-root[data-dock="top"] .vl-g-hint { position: relative; top: auto; left: auto; transform: none; margin-top: -10px; }
+.vl-root[data-dock="top"] .vl-g-tap { padding: 8px 14px; gap: 2px; }
+.vl-root[data-dock="top"] .vl-g-tap strong { font-size: clamp(15px, 1.8vw, 19px); }
+.vl-root[data-dock="top"] .vl-g-tap span { font-size: 12px; }
+.vl-root[data-dock="top"] .vl-g-hint { font-size: 12px; padding: 4px 12px; }
+.vl-root[data-dock="top"] .vl-g-bottom { gap: 6px; }
+.vl-root[data-dock="top"] .vl-g-line { font-size: clamp(14px, 1.6vw, 17px); padding: 7px 14px; max-height: 14vh; }
+.vl-root[data-dock="top"] .vl-g-card { padding: 10px 14px; border-radius: 16px; }
+.vl-root[data-dock="top"] .vl-g-ctext { font-size: 14.5px; }
+.vl-root[data-dock="top"] .vl-glass[data-card="true"] .vl-g-circle { transform: translateY(-1vh) scale(.76); }
+
+/* spatial & behavioral context pill (shows current section / active product) */
+.vl-ctxchip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; cursor: pointer;
+  font-size: 11.5px; font-weight: 550; color: #bfd6ff; max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: rgba(16,32,78,.48); border: 1px solid rgba(150,190,255,.24); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  transition: background var(--vl-ease), border-color var(--vl-ease);
+}
+.vl-ctxchip:hover { background: rgba(45,85,190,.58); border-color: rgba(175,210,255,.48); color: #eef5ff; }
+.vl-ctxchip[hidden] { display: none !important; }
+.vl-ctxchip b { color: #8fd0ff; font-weight: 700; }
 
 /* the pane: blur + tint + sheen + a thin lit edge, like a real sheet of glass in front of a monitor */
 .vl-g-pane {
@@ -476,6 +497,18 @@ button:focus-visible, input:focus-visible {
 .vl-g-because, .vl-g-rx, .vl-g-disc { margin: 8px 0 0; font-size: 12.5px; line-height: 1.45; color: #bcd0f5; }
 .vl-g-because { padding-top: 8px; border-top: 1px dashed rgba(170,200,255,.30); }
 .vl-g-rx { padding: 8px 10px; border-radius: 12px; color: #ffe6b0; background: rgba(240,181,64,.14); border: 1px solid rgba(255,214,130,.40); }
+.vl-g-cmp { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: stretch; margin-top: 8px; }
+.vl-g-cmp[hidden] { display: none !important; }
+.vl-g-cmp-col {
+  display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 12px;
+  background: rgba(8,16,44,.52); border: 1px solid rgba(170,205,255,.28); font-size: 13px;
+}
+.vl-g-cmp-col strong { font-size: 14px; font-weight: 700; color: #f4f8ff; }
+.vl-g-cmp-price { font-size: 15px; font-weight: 800; color: #9be7c4; }
+.vl-g-cmp-stock { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: #a8efff; }
+.vl-g-cmp-col[data-stock="out"] .vl-g-cmp-stock { color: #ffb4b4; }
+.vl-g-cmp-col small { font-size: 11.5px; color: #c7d8fa; line-height: 1.35; }
+.vl-g-cmp-vs { align-self: center; font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #9fb6e8; padding: 4px 6px; border-radius: 999px; background: rgba(60,100,200,.28); }
 .vl-g-offer { margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: rgba(8,16,44,.45); border: 1px solid rgba(170,200,255,.26); }
 .vl-g-offer[data-accepted="true"] { border-color: rgba(155,231,196,.6); }
 .vl-g-oname { margin: 0; font-weight: 650; font-size: 15px; }

@@ -192,7 +192,11 @@
         $('#cart-count').textContent = cart.length;
         var box = $('#cart-summary'); box.hidden = cart.length === 0;
         $('#cart-lines').innerHTML = cart.map(function (c) { return '<li>' + c.name + ' — ' + money(c.price) + '</li>'; }).join('');
-        $('#cart-total').textContent = money(cart.reduce(function (s, c) { return s + c.price; }, 0));
+        var tot = money(cart.reduce(function (s, c) { return s + c.price; }, 0));
+        $('#cart-total').textContent = tot;
+        if (window.VoiceLayer && window.VoiceLayer.setCart) {
+          window.VoiceLayer.setCart({ count: cart.length, total: tot, items: cart.slice() });
+        }
       }
       function toast(t) { var el = $('#toast'); el.textContent = t; el.classList.add('on'); setTimeout(function () { el.classList.remove('on'); }, 1800); }
       document.querySelectorAll('.add').forEach(function (b) {
@@ -230,7 +234,16 @@
         mode: 'glass', language: lang, apiBase: '/api/voice', debug: q.get('debug') === '1', bubble: false,
         glass: { dock: q.get('dock') == null ? 'top' : q.get('dock'), height: +(q.get('h') || 0.42), blur: +(q.get('blur') || 14), tint: +(q.get('tint') || 0.22), hue: +(q.get('hue') || 215), lite: q.get('lite') == null ? 'auto' : q.get('lite') === 'true' },
         companion: { preset: preset, name: 'Boss', demo: true },      // demo:true → clearly-labelled DEMO DATA; replace with your real signals
-        aiAnswer: async function (question, ctx) {                   // HOST-SUPPLIED BRAIN (generic hook). Demo: canned.
+        profile: { name: 'Boss', tier: 'VIP', goals: ['wireless', 'battery'], preferences: ['noise cancelling'] },
+        actions: [
+          {
+            id: 'apply_vip',
+            label: 'Apply VIP discount',
+            phrases: ['apply vip discount', 'apply promo code', 'aplicar descuento vip'],
+            handler: function () { return 'Done — your 10% VIP discount has been noted for checkout.'; }
+          }
+        ],
+        aiAnswer: async function (question, ctx) {                   // HOST-SUPPLIED BRAIN (generic hook). Receives full spatial + inventory + profile ctx.
           if (/shipping|return/i.test(question)) return { text: 'Shipping is free over $50, and returns are accepted within 30 days. (Demo AI answer.)' };
           if (/discount|coupon|promo/i.test(question)) return { text: 'There is a 10 percent welcome discount at checkout. (Demo AI answer.)' };
           return null;                                                   // null → falls through to the built-in rules
