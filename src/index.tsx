@@ -1009,6 +1009,47 @@ app.get('/api/voice/listen', async (c) => {
   return new Response(null, { status: 101, webSocket: client } as any)
 })
 
+const WMO_MAP: Record<number, { en: string; es: string; raining: boolean; dry: boolean }> = {
+  0: { en: 'clear and sunny', es: 'despejado y soleado', raining: false, dry: true },
+  1: { en: 'mostly sunny', es: 'mayormente soleado', raining: false, dry: true },
+  2: { en: 'partly cloudy', es: 'parcialmente nublado', raining: false, dry: true },
+  3: { en: 'overcast', es: 'nublado', raining: false, dry: true },
+  45: { en: 'foggy', es: 'con niebla', raining: false, dry: false },
+  48: { en: 'foggy', es: 'con niebla', raining: false, dry: false },
+  51: { en: 'light drizzle', es: 'llovizna ligera', raining: true, dry: false },
+  53: { en: 'drizzle', es: 'llovizna', raining: true, dry: false },
+  55: { en: 'heavy drizzle', es: 'llovizna fuerte', raining: true, dry: false },
+  61: { en: 'light rain', es: 'lluvia ligera', raining: true, dry: false },
+  63: { en: 'raining', es: 'lloviendo', raining: true, dry: false },
+  65: { en: 'heavy rain', es: 'lluvia fuerte', raining: true, dry: false },
+  80: { en: 'rain showers', es: 'chubascos', raining: true, dry: false },
+  81: { en: 'rain showers', es: 'chubascos', raining: true, dry: false },
+  82: { en: 'heavy rain showers', es: 'chubascos fuertes', raining: true, dry: false },
+  95: { en: 'thunderstorm', es: 'tormenta eléctrica', raining: true, dry: false }
+}
+
+app.get('/api/voice/weather', async (c) => {
+  const url = new URL(c.req.url)
+  const lat = parseFloat(url.searchParams.get('lat') || '25.7617') || 25.7617
+  const lon = parseFloat(url.searchParams.get('lon') || '-80.1918') || -80.1918
+  const city = url.searchParams.get('city') || 'Miami'
+  try {
+    const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,precipitation,rain,weather_code&temperature_unit=fahrenheit&timezone=auto`
+    const r = await fetch(omUrl)
+    if (r.ok) {
+      const d: any = await r.json()
+      const cur = d.current || {}
+      const tempF = Math.round(Number(cur.temperature_2m ?? 78))
+      const tempC = Math.round(((tempF - 32) * 5) / 9)
+      const code = Number(cur.weather_code ?? 0)
+      const wmo = WMO_MAP[code] || { en: 'partly cloudy', es: 'parcialmente nublado', raining: (cur.rain || 0) > 0, dry: (cur.rain || 0) === 0 }
+      const raining = wmo.raining || Number(cur.rain || 0) > 0 || Number(cur.precipitation || 0) > 0
+      return c.json({ ok: true, city, tempF, tempC, raining, dry: !raining, condition: { en: wmo.en, es: wmo.es }, code })
+    }
+  } catch {}
+  return c.json({ ok: true, city, tempF: 78, tempC: 26, raining: false, dry: true, condition: { en: 'sunny and dry', es: 'soleado y seco' }, fallback: true })
+})
+
 app.get('/', (c) => c.redirect('/voicelayer/demo'))
 
 export default app
