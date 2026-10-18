@@ -1884,6 +1884,7 @@
         });
         if (s.weather) Briefing.setWeather(s.weather);
         if (Array.isArray(s.calendar)) Briefing.setCalendar(s.calendar);
+        if (Array.isArray(s.workCalendar || s.secondCalendar || s.trips)) Briefing.setWorkCalendar(s.workCalendar || s.secondCalendar || s.trips);
         if (Array.isArray(s.toTake)) Briefing.setToTake(s.toTake);
         if (Array.isArray(s.toBuy)) Briefing.setToBuy(s.toBuy);
         this._hostList = list;
@@ -1925,12 +1926,15 @@
 
   /**
    * Executive Daily Briefing Engine:
-   * Connects to Weather (temperature + raining or dry), Calendar/Schedule, Pending to Take, and Pending to Buy/Refill.
+   * Connects to Weather (temperature + raining or dry), Primary Calendar (appointments & training),
+   * Second Calendar (work meetings, training blocks & business trips/travel), Personal Biometrics,
+   * Pending to Take, and Pending to Buy/Refill.
    */
   const Briefing = {
     _weather: null,
     _weatherFetchedAt: 0,
     _calendar: [],
+    _workCalendar: [],
     _toTake: [],
     _toBuy: [],
     defaultWeather: function () {
@@ -1985,10 +1989,18 @@
     },
     setCalendar: function (items) {
       this._calendar = Array.isArray(items) ? items.filter(Boolean).map(function (x) {
-        if (typeof x === 'string') return { label: clean(x), time: '' };
-        return { label: clean(loc(x.label || x.title || x.name || '')), time: clean(x.time || x.due || x.at || '') };
+        if (typeof x === 'string') return { label: clean(x), time: '', kind: '' };
+        return { label: clean(loc(x.label || x.title || x.name || '')), time: clean(x.time || x.due || x.at || ''), kind: clean(x.kind || x.category || '') };
       }).filter(function (x) { return !!x.label; }) : [];
       return this.calendar();
+    },
+    setWorkCalendar: function (items) {
+      this._workCalendar = Array.isArray(items) ? items.filter(Boolean).map(function (x) {
+        if (typeof x === 'string') return { label: clean(x), time: '', kind: 'work' };
+        const locPart = x.location ? (' @ ' + clean(x.location)) : '';
+        return { label: clean(loc(x.label || x.title || x.name || '')) + locPart, time: clean(x.time || x.due || x.at || ''), kind: clean(x.kind || x.category || 'work') };
+      }).filter(function (x) { return !!x.label; }) : [];
+      return this.workCalendar();
     },
     setToTake: function (items) {
       this._toTake = Array.isArray(items) ? items.filter(Boolean).map(function (x) {
@@ -2009,23 +2021,40 @@
     },
     calendar: function () {
       const out = [];
-      const add = function (lbl, tm) {
+      const add = function (lbl, tm, kind) {
         lbl = clean(lbl); if (!lbl) return;
         const full = tm && lbl.indexOf(tm) < 0 ? (lbl + ' (' + tm + ')') : lbl;
-        if (!out.some(function (x) { return norm(x.label) === norm(lbl); })) out.push({ label: lbl, time: tm || '', text: full });
+        if (!out.some(function (x) { return norm(x.label) === norm(lbl); })) out.push({ label: lbl, time: tm || '', kind: kind || '', text: full });
       };
-      this._calendar.forEach(function (c) { add(c.label, c.time); });
-      if (Array.isArray(CONFIG.calendar)) CONFIG.calendar.forEach(function (c) { add(typeof c === 'string' ? c : loc(c.label || c.title), c.time || c.due); });
+      this._calendar.forEach(function (c) { add(c.label, c.time, c.kind); });
+      if (Array.isArray(CONFIG.calendar)) CONFIG.calendar.forEach(function (c) { add(typeof c === 'string' ? c : loc(c.label || c.title), c.time || c.due, c.kind); });
       Signals.all().forEach(function (s) {
-        if (/^(calendar|event|appointment|session|meeting|schedule|review)$/i.test(s.type)) add(s.label, s.value);
+        if (/^(calendar|event|appointment|session|meeting|schedule|review)$/i.test(s.type)) add(s.label, s.value, s.type);
       });
       if (Companion.data && Array.isArray(Companion.data.tasks)) {
         Companion.data.tasks.forEach(function (t) {
-          if (!t.done && /^(calendar|event|appointment|session|meeting|schedule|review)$/i.test(t.kind)) add(loc(t.label), t.due);
+          if (!t.done && /^(calendar|event|appointment|session|meeting|schedule|review)$/i.test(t.kind)) add(loc(t.label), t.due, t.kind);
         });
       }
       qsa('[data-vl-calendar]').forEach(function (el) {
-        if (!el.closest(SKIP_SEL)) add(el.getAttribute('data-vl-calendar') || el.textContent, el.getAttribute('data-vl-time') || '');
+        if (!el.closest(SKIP_SEL)) add(el.getAttribute('data-vl-calendar') || el.textContent, el.getAttribute('data-vl-time') || '', el.getAttribute('data-vl-kind') || '');
+      });
+      return out;
+    },
+    workCalendar: function () {
+      const out = [];
+      const add = function (lbl, tm, kind) {
+        lbl = clean(lbl); if (!lbl) return;
+        const full = tm && lbl.indexOf(tm) < 0 ? (lbl + ' (' + tm + ')') : lbl;
+        if (!out.some(function (x) { return norm(x.label) === norm(lbl); })) out.push({ label: lbl, time: tm || '', kind: kind || 'work', text: full });
+      };
+      this._workCalendar.forEach(function (c) { add(c.label, c.time, c.kind); });
+      if (Array.isArray(CONFIG.workCalendar)) CONFIG.workCalendar.forEach(function (c) { add(typeof c === 'string' ? c : loc(c.label || c.title), c.time || c.due, c.kind || 'work'); });
+      Signals.all().forEach(function (s) {
+        if (/^(work|trip|travel|flight|training_block|executive)$/i.test(s.type)) add(s.label, s.value, s.type);
+      });
+      qsa('[data-vl-work-calendar], [data-vl-trip]').forEach(function (el) {
+        if (!el.closest(SKIP_SEL)) add(el.getAttribute('data-vl-work-calendar') || el.getAttribute('data-vl-trip') || el.textContent, el.getAttribute('data-vl-time') || '', 'work');
       });
       return out;
     },
@@ -2078,6 +2107,18 @@
       }
       return out;
     },
+    biometricsText: function () {
+      try {
+        const det = (Profile.get && Profile.get().details) || {};
+        const bParts = [];
+        if (det.readiness && det.readiness.score != null) bParts.push((LANG === 'es' ? 'Recuperación ' : 'Readiness ') + det.readiness.score + '/100');
+        if (det.metrics && det.metrics.sleep && det.metrics.sleep.current != null) bParts.push((LANG === 'es' ? 'Sueño ' : 'Sleep ') + det.metrics.sleep.current + 'h');
+        if (det.metrics && det.metrics.hrv && det.metrics.hrv.current != null) bParts.push('HRV ' + det.metrics.hrv.current + 'ms');
+        if (det.biologicalAge != null) bParts.push((LANG === 'es' ? 'Edad biológica ' : 'Bio-age ') + det.biologicalAge + 'y');
+        if (!bParts.length) return '';
+        return LANG === 'es' ? ('Tus biométricos hoy: ' + bParts.join(', ') + '.') : ('Your biometrics today: ' + bParts.join(', ') + '.');
+      } catch (e) { return ''; }
+    },
     weatherText: function () {
       const w = this.weather();
       const cond = loc(w.condition) || (w.raining ? (LANG === 'es' ? 'lloviendo' : 'raining') : (LANG === 'es' ? 'soleado y seco' : 'sunny and dry'));
@@ -2090,13 +2131,33 @@
     },
     calendarText: function () {
       const cal = this.calendar();
-      if (!cal.length) {
+      const wcal = this.workCalendar();
+      if (!cal.length && !wcal.length) {
         return LANG === 'es' ? 'Tu calendario de hoy está libre — no hay citas ni eventos pendientes.' : 'Your calendar is clear today — no pending appointments or events.';
       }
       const list = andList(cal.slice(0, 4).map(function (x) { return x.text; }));
+      const base = cal.length
+        ? (LANG === 'es'
+            ? ('En tu calendario de hoy tienes ' + cal.length + (cal.length === 1 ? ' evento: ' : ' eventos: ') + list + '.')
+            : ('On your calendar today you have ' + cal.length + (cal.length === 1 ? ' event: ' : ' events: ') + list + '.'))
+        : '';
+      const workPart = wcal.length
+        ? (LANG === 'es'
+            ? (' En tu segundo calendario (trabajo, entrenamientos y viajes): ' + andList(wcal.slice(0, 4).map(function (x) { return x.text; })) + '.')
+            : (' On your second calendar (work meetings, training & trips): ' + andList(wcal.slice(0, 4).map(function (x) { return x.text; })) + '.'))
+        : '';
+      return (base + workPart).trim();
+    },
+    workCalendarText: function () {
+      const wcal = this.workCalendar();
+      const cal = this.calendar();
+      const list = (wcal.length ? wcal : cal).slice(0, 5).map(function (x) { return x.text; });
+      if (!list.length) {
+        return LANG === 'es' ? 'No tienes reuniones de trabajo, entrenamientos ni viajes programados hoy.' : 'You have no work meetings, training blocks, or trips scheduled right now.';
+      }
       return LANG === 'es'
-        ? ('En tu calendario de hoy tienes ' + cal.length + (cal.length === 1 ? ' evento: ' : ' eventos: ') + list + '.')
-        : ('On your calendar today you have ' + cal.length + (cal.length === 1 ? ' event: ' : ' events: ') + list + '.');
+        ? ('En tu calendario de trabajo, entrenamiento y viajes: ' + andList(list) + '.')
+        : ('On your work, training, and travel calendar: ' + andList(list) + '.');
     },
     toTakeText: function () {
       const take = this.toTake();
@@ -2121,18 +2182,24 @@
     summaryLine: function () {
       const w = this.weather();
       const cond = loc(w.condition) || (w.raining ? (LANG === 'es' ? 'lloviendo' : 'raining') : (LANG === 'es' ? 'seco y despejado' : 'sunny and dry'));
+      const bio = this.biometricsText();
       const cal = this.calendar();
+      const wcal = this.workCalendar();
       const take = this.toTake();
       const buy = this.toBuy();
       const parts = [];
       if (LANG === 'es') {
         parts.push('Hoy hace ' + w.tempC + '°C (' + w.tempF + '°F), ' + cond + (w.raining ? ' con lluvia.' : ' y sin lluvia.'));
+        if (bio) parts.push(bio);
         if (cal.length) parts.push('En tu calendario: ' + andList(cal.slice(0, 3).map(function (x) { return x.text; })) + '.');
+        if (wcal.length) parts.push('Trabajo, entreno y viajes: ' + andList(wcal.slice(0, 3).map(function (x) { return x.text; })) + '.');
         if (take.length) parts.push('Pendiente por tomar: ' + andList(take.slice(0, 3).map(function (x) { return x.text; })) + '.');
         if (buy.length) parts.push('Pendiente por comprar: ' + andList(buy.slice(0, 3).map(function (x) { return x.text; })) + '.');
       } else {
         parts.push('It’s ' + w.tempF + '°F (' + w.tempC + '°C), ' + cond + (w.raining ? ' with rain today.' : ' and dry today.'));
+        if (bio) parts.push(bio);
         if (cal.length) parts.push('On your calendar: ' + andList(cal.slice(0, 3).map(function (x) { return x.text; })) + '.');
+        if (wcal.length) parts.push('Work, training & trips: ' + andList(wcal.slice(0, 3).map(function (x) { return x.text; })) + '.');
         if (take.length) parts.push('Pending to take: ' + andList(take.slice(0, 3).map(function (x) { return x.text; })) + '.');
         if (buy.length) parts.push('Pending to buy: ' + andList(buy.slice(0, 3).map(function (x) { return x.text; })) + '.');
       }
@@ -2142,12 +2209,15 @@
       const P = I.cp;
       const name = (Profile.get && Profile.get().name) || (Companion.data && Companion.data.name) || Memory.name() || (Companion.cfg && Companion.cfg.name) || '';
       const hello = P && P.hello ? P.hello(P.part[cpDaypart()], name) : (LANG === 'es' ? 'Hola' + (name ? ', ' + name : '') + '.' : 'Hello' + (name ? ', ' + name : '') + '.');
-      return [hello, this.weatherText(), this.calendarText(), this.toTakeText(), this.toBuyText()].join(' ');
+      const bio = this.biometricsText();
+      return [hello, this.weatherText(), bio, this.calendarText(), this.toTakeText(), this.toBuyText()].filter(Boolean).join(' ');
     },
     snapshot: function () {
       return {
         weather: this.weather(),
+        biometrics: this.biometricsText(),
         calendar: this.calendar(),
+        workCalendar: this.workCalendar(),
         toTake: this.toTake(),
         toBuy: this.toBuy(),
         summary: this.summaryLine()
@@ -2157,6 +2227,7 @@
 
   const Profile = {
     _custom: null,
+    _activeUserId: '',
     _sessionGoals: [],
     init: function () {
       let saved = null;
@@ -2164,6 +2235,7 @@
       const base = (saved && typeof saved === 'object') ? saved : {};
       const cfg = (CONFIG.profile && typeof CONFIG.profile === 'object') ? CONFIG.profile : {};
       this._custom = Object.assign({}, base, cfg);
+      this._activeUserId = clean(this._custom.id || this._custom.userId || '');
       if (Array.isArray(base.sessionGoals)) {
         const self = this;
         base.sessionGoals.forEach(function (g) {
@@ -2174,29 +2246,75 @@
     persist: function () {
       try {
         const c = this._custom || {};
+        const uid = clean(c.id || c.userId || this._activeUserId || '').slice(0, 64);
         const safeName = (c.name && !SENS_TEXT.test(norm(c.name))) ? clean(c.name).slice(0, 40) : '';
         const safeTier = clean(c.tier || c.memberTier || '').slice(0, 30);
         const rawGoals = [].concat(c.goals || [], c.goal ? [c.goal] : [], this._sessionGoals);
         const safeGoals = uniq(rawGoals.map(function (g) { return clean(g); }).filter(function (g) { return g && g.length <= 80 && !SENS_TEXT.test(norm(g)); })).slice(0, 12);
         const safePrefs = uniq((Array.isArray(c.preferences) ? c.preferences : []).map(function (p) { return clean(p); }).filter(function (p) { return p && p.length <= 80 && !SENS_TEXT.test(norm(p)); })).slice(0, 12);
-        store.set(KEYS.prof, JSON.stringify({
+        const payload = JSON.stringify({
+          id: uid,
           name: safeName,
           tier: safeTier,
           goals: safeGoals,
           preferences: safePrefs,
           sessionGoals: this._sessionGoals.slice(0, 10),
           updatedAt: Date.now()
-        }));
+        });
+        store.set(KEYS.prof, payload);
+        if (uid) {
+          store.set(KEYS.prof + ':' + uid, payload);
+          let users = [];
+          try { users = JSON.parse(store.get('voicelayer.users.v1') || '[]'); } catch (e) { users = []; }
+          if (!Array.isArray(users)) users = [];
+          const existingIdx = users.findIndex(function (u) { return u && u.id === uid; });
+          const summaryEntry = { id: uid, name: safeName, role: clean(c.role || c.lifestylePersona || ''), updatedAt: Date.now() };
+          if (existingIdx >= 0) users[existingIdx] = summaryEntry;
+          else users.push(summaryEntry);
+          store.set('voicelayer.users.v1', JSON.stringify(users.slice(-20)));
+        }
       } catch (e) {}
     },
+    activeUserId: function () {
+      return clean(this._activeUserId || (this._custom && (this._custom.id || this._custom.userId)) || '');
+    },
+    listUsers: function () {
+      try {
+        const u = JSON.parse(store.get('voicelayer.users.v1') || '[]');
+        return Array.isArray(u) ? u : [];
+      } catch (e) { return []; }
+    },
+    setUser: function (userId, profileObj) {
+      const uid = clean(userId || (profileObj && (profileObj.id || profileObj.userId)) || '');
+      if (uid && uid !== this._activeUserId) {
+        this._activeUserId = uid;
+        this._sessionGoals = [];
+        let savedUser = null;
+        try { savedUser = JSON.parse(store.get(KEYS.prof + ':' + uid) || 'null'); } catch (e) { savedUser = null; }
+        this._custom = (savedUser && typeof savedUser === 'object') ? savedUser : {};
+        if (Array.isArray(this._custom.sessionGoals)) this._sessionGoals = this._custom.sessionGoals.slice();
+      }
+      return this.set(Object.assign({}, profileObj || {}, uid ? { id: uid } : {}));
+    },
     wipe: function () {
+      const uid = this._activeUserId;
       this._custom = {};
       this._sessionGoals = [];
       store.set(KEYS.prof, null);
+      if (uid) store.set(KEYS.prof + ':' + uid, null);
     },
     set: function (p) {
       if (!p || typeof p !== 'object') return this.get();
-      const prevGoals = (this._custom && Array.isArray(this._custom.goals)) ? this._custom.goals : [];
+      const incomingId = clean(p.id || p.userId || '');
+      const switchingUser = incomingId && this._activeUserId && incomingId !== this._activeUserId;
+      if (switchingUser) {
+        this._activeUserId = incomingId;
+        this._sessionGoals = [];
+        this._custom = {};
+      } else if (incomingId) {
+        this._activeUserId = incomingId;
+      }
+      const prevGoals = (!switchingUser && this._custom && Array.isArray(this._custom.goals)) ? this._custom.goals : [];
       const nextGoals = uniq([].concat(prevGoals, Array.isArray(p.goals) ? p.goals : [], p.goal ? [p.goal] : []));
       this._custom = Object.assign({}, this._custom || {}, p, {
         tier: clean(p.tier || p.memberTier || (this._custom && (this._custom.tier || this._custom.memberTier)) || ''),
@@ -2225,10 +2343,11 @@
       const visits = (Memory.has() && Memory.d && Memory.d.visits) ? Memory.d.visits : 1;
       const tierVal = clean(c.tier || c.memberTier || '');
       const extraDetails = {};
-      ['age', 'gender', 'role', 'persona', 'lifestylePersona', 'dataCompleteness', 'readiness', 'metrics', 'trainingPlan', 'nutrition', 'flags', 'biomarkers', 'bloodwork', 'organHealth', 'biologicalAge', 'biohackingProtocols', 'loyaltyPoints', 'summary'].forEach(function (k) {
+      ['age', 'gender', 'role', 'persona', 'lifestylePersona', 'dataCompleteness', 'readiness', 'metrics', 'trainingPlan', 'nutrition', 'flags', 'biomarkers', 'bloodwork', 'organHealth', 'biologicalAge', 'biohackingProtocols', 'loyaltyPoints', 'summary', 'workCalendar', 'trips'].forEach(function (k) {
         if (c[k] !== undefined) extraDetails[k] = c[k];
       });
       return {
+        id: clean(c.id || c.userId || this._activeUserId || ''),
         name: name,
         tier: tierVal,
         memberTier: tierVal,
@@ -4215,11 +4334,13 @@
     let tn = sn; for (let i = 0; i < 3; i++) tn = tn.replace(G.pre, '');
     tn = tn.replace(/\s+(please|thanks|thank you|por favor|gracias)$/, '').trim();
     let m;
-    // ---- executive daily briefing: weather, calendar, pending to take, pending to buy ----
-    if (/^(give me (my |the |a )?(daily |morning )?(briefing|update|summary|status)|daily briefing|morning briefing|my briefing|brief me|how is my day( looking)?|whats my status( today)?|dame (mi |el )?(resumen|informe|briefing)( del dia| diario)?|resumen del dia|como esta mi dia|estado del dia)$/.test(tn))
+    // ---- executive daily briefing: weather, primary calendar, work/training/travel calendar, pending to take, pending to buy ----
+    if (/^(give me (my |the |a )?(daily |morning |quick )?(briefing|update|summary|status)|daily briefing|morning briefing|my briefing|brief me|how is my day( looking)?|whats my status( today)?|what (is |do i have )?pending( today)?|whats pending( today)?|everything( that is)? pending|summary of everything( pending)?|dame (mi |el )?(resumen|informe|briefing)( del dia| diario)?|resumen del dia|como esta mi dia|estado del dia|que tengo pendiente( hoy)?|todo lo pendiente)$/.test(tn))
       return { type: 'briefing', act: 'all', raw: raw };
     if (/^(how is the (weather|day|temperature)|whats the (weather|temperature)( like)?( today)?|what is the (weather|temperature)( today)?|weather( today| report| forecast)?|temperature( today)?|is it (raining|sunny|dry|cold|hot|warm)( or (dry|raining|sunny))?( today| outside| right now)?|raining or dry|temp or raining|que (tiempo|clima) hace( hoy)?|como esta el (clima|tiempo|dia)( hoy)?|cual es la temperatura( hoy)?|esta (lloviendo|seco|soleado)( o (seco|lloviendo))?( hoy)?|llueve hoy|temperatura de hoy)$/.test(tn))
       return { type: 'briefing', act: 'weather', raw: raw };
+    if (/^(whats on my (work |second |training |travel )?(calendar|schedule|agenda)( today)?|what is on my (work |second |training |travel )?(calendar|schedule|agenda)( today)?|check (my )?(work |second |training |travel )(calendar|schedule|agenda)|(my )?(work|second|training|travel) (calendar|schedule|agenda)( today| for today)?|what (work meetings|meetings|trips|flights|training|workouts) do i have( today)?|do i have any (work meetings|trips|flights|travel)( today)?|que (hay|tengo) en (mi |el )?(segundo calendario|calendario de trabajo|calendario laboral|agenda de trabajo)( hoy)?|(segundo calendario|calendario de trabajo|viajes pendientes))$/.test(tn) && /\b(work|second|training|travel|trip|trips|flight|flights|trabajo|segundo|laboral|viaje|viajes)\b/.test(tn))
+      return { type: 'briefing', act: 'work', raw: raw };
     if (/^(whats on my (calendar|schedule|agenda)( today)?|what is on my (calendar|schedule|agenda)( today)?|check (my )?(calendar|schedule|agenda)|my (calendar|schedule|agenda)( today| for today)?|what (appointments|meetings|events|sessions) do i have( today)?|do i have any (appointments|meetings|events|sessions)( today)?|que (hay|tengo) en (mi |el )?(calendario|agenda)( hoy)?|mi (calendario|agenda)( de hoy)?|revisa (mi )?(calendario|agenda)|que (citas|eventos|reuniones|sesiones) tengo( hoy)?)$/.test(tn))
       return { type: 'briefing', act: 'calendar', raw: raw };
     if (/^(what (is |do i have )?pending to take( today)?|whats pending to take( today)?|what (do i need|do i have|am i supposed) to take( today)?|what (supplements|medications|vitamins|doses|pills|regimen) (do i need|do i have|are pending) to take( today)?|pending to take|my (daily )?(supplements|regimen|doses)( today)?|did i take my (supplements|vitamins|medications)( today)?|que tengo pendiente (por |de |para )?tomar( hoy)?|que me toca tomar( hoy)?|pendiente (por |de )?tomar|mis suplementos( de hoy)?|que suplementos tengo pendientes( hoy)?)$/.test(tn))
@@ -5503,6 +5624,7 @@
       let text = '';
       if (act === 'weather') text = Briefing.weatherText();
       else if (act === 'calendar') text = Briefing.calendarText();
+      else if (act === 'work') text = Briefing.workCalendarText();
       else if (act === 'take') text = Briefing.toTakeText();
       else if (act === 'buy') text = Briefing.toBuyText();
       else text = Briefing.fullText();
@@ -6251,6 +6373,130 @@
   };
 
   /* =========================================================================
+   * 8C. SYMBIOSIS PROTOCOL — universal website / repo-to-repo / AI-agent handshake
+   * =========================================================================
+   * Allows any host website or AI coding agent in another repository to establish
+   * instant, full-fidelity symbiotic communication with VoiceLayer via:
+   *   1. Runtime Handshake: window.VoiceLayer.symbiosis.handshake({...}) or window.__VOICELAYER_SYMBIOSIS__
+   *   2. Declarative DOM Manifest: <script type="application/voicelayer+json">
+   *   3. W3C WebMCP Bridge: navigator.modelContext / window.__WEBMCP_TOOLS__
+   *   4. Agentic Web Discovery: /llms.txt or /.well-known/voicelayer.json
+   *   5. Self-diagnostic inspection: VoiceLayer.symbiosis.status() & VoiceLayer.symbiosis.guide()
+   */
+  const Symbiosis = {
+    _manifest: null,
+    _lastSync: 0,
+    _sources: [],
+    handshake: function (spec) {
+      if (!spec || typeof spec !== 'object') return this.status();
+      this._manifest = Object.assign({}, this._manifest || {}, spec);
+      this._lastSync = Date.now();
+      if (this._sources.indexOf('handshake') < 0) this._sources.push('handshake');
+      if (spec.userId && spec.profile && typeof spec.profile === 'object') {
+        Profile.setUser(spec.userId, spec.profile);
+      } else if (spec.profile && typeof spec.profile === 'object') {
+        Profile.set(spec.profile);
+      } else if (spec.user && typeof spec.user === 'object') {
+        Profile.set(spec.user);
+      }
+      if (Array.isArray(spec.inventory)) Inventory.set(spec.inventory);
+      if (spec.cart && typeof spec.cart === 'object') Inventory.setCart(spec.cart);
+      if (Array.isArray(spec.calendar)) Briefing.setCalendar(spec.calendar);
+      if (Array.isArray(spec.workCalendar)) Briefing.setWorkCalendar(spec.workCalendar);
+      if (Array.isArray(spec.toTake)) Briefing.setToTake(spec.toTake);
+      if (Array.isArray(spec.toBuy)) Briefing.setToBuy(spec.toBuy);
+      if (spec.weather && typeof spec.weather === 'object') Briefing.setWeather(spec.weather);
+      if (Array.isArray(spec.knowledge)) Knowledge.addFacts(spec.knowledge);
+      if (spec.signals) Signals.set(spec.signals);
+      if (Array.isArray(spec.actions)) {
+        spec.actions.forEach(function (act) {
+          if (act && act.name && typeof act.handler === 'function') {
+            Actions.register(act.name, act.handler, act);
+          }
+        });
+      }
+      return this.status();
+    },
+    autoDiscover: function () {
+      try {
+        // 1. Check global __VOICELAYER_SYMBIOSIS__ object
+        if (window.__VOICELAYER_SYMBIOSIS__ && typeof window.__VOICELAYER_SYMBIOSIS__ === 'object') {
+          if (this._sources.indexOf('window.__VOICELAYER_SYMBIOSIS__') < 0) this._sources.push('window.__VOICELAYER_SYMBIOSIS__');
+          this.handshake(window.__VOICELAYER_SYMBIOSIS__);
+        }
+        // 2. Check <script type="application/voicelayer+json">
+        const scripts = document.querySelectorAll('script[type="application/voicelayer+json"]');
+        for (let i = 0; i < scripts.length; i++) {
+          try {
+            const parsed = JSON.parse(scripts[i].textContent || '{}');
+            if (this._sources.indexOf('script[application/voicelayer+json]') < 0) this._sources.push('script[application/voicelayer+json]');
+            this.handshake(parsed);
+          } catch (_) {}
+        }
+        // 3. Check W3C WebMCP (navigator.modelContext or window.__WEBMCP_TOOLS__)
+        const mcpTools = (navigator.modelContext && Array.isArray(navigator.modelContext.tools))
+          ? navigator.modelContext.tools
+          : (Array.isArray(window.__WEBMCP_TOOLS__) ? window.__WEBMCP_TOOLS__ : null);
+        if (mcpTools && mcpTools.length) {
+          if (this._sources.indexOf('WebMCP') < 0) this._sources.push('WebMCP');
+          mcpTools.forEach(function (t) {
+            if (t && t.name && typeof t.execute === 'function') {
+              Actions.register(t.name, t.execute, { description: t.description || '', phrases: t.phrases || [t.name] });
+            }
+          });
+        }
+      } catch (_) {}
+      return this.status();
+    },
+    status: function () {
+      const p = Profile.get();
+      const b = Briefing.snapshot();
+      const inv = Inventory.json();
+      const sm = Scanner.json();
+      return {
+        protocolVersion: '1.0.0-symbiosis',
+        voiceLayerVersion: VERSION,
+        activeUserId: Profile.activeUserId(),
+        knownUsers: Profile.listUsers(),
+        sources: this._sources.slice(),
+        lastSync: this._lastSync,
+        connected: {
+          profile: !!(p.name || p.role || Object.keys(p.details || {}).length),
+          biometrics: !!(p.details && (p.details.readiness != null || p.details.metrics || p.details.biologicalAge != null)),
+          primaryCalendar: b.calendar.length,
+          workCalendar: b.workCalendar.length,
+          pendingToTake: b.toTake.length,
+          pendingToBuy: b.toBuy.length,
+          inventoryItems: inv.length,
+          knowledgePassages: Knowledge.enabled() ? Knowledge.passages().length : 0,
+          dynamicFacts: Knowledge.dynamicFacts().length,
+          domControls: (sm.Summary && sm.Summary.totalInteractive) || (sm.controls ? sm.controls.length : 0),
+          customActions: Actions.list().length
+        }
+      };
+    },
+    guide: function () {
+      return {
+        summary: 'VoiceLayer Universal Symbiotic Protocol (Repo-to-Repo & Website-to-Agent Contract)',
+        quickStart: 'Call window.VoiceLayer.symbiosis.handshake({ userId, profile, calendar, workCalendar, toTake, toBuy, inventory, cart, knowledge, actions }) or set window.__VOICELAYER_SYMBIOSIS__.',
+        multiUser: 'Call VoiceLayer.setUser(userId, profileObj) whenever the logged-in user/athlete/client changes. Each user gets isolated learning & behavior memory in localStorage.',
+        dualCalendars: {
+          primaryCalendar: 'VoiceLayer.setCalendar([{ title, time, location, status }]) — medical appointments, check-ins, primary schedule',
+          workCalendar: 'VoiceLayer.setWorkCalendar([{ title, time, kind: "work"|"training"|"trip", location }]) — work meetings, training blocks, business trips & flights'
+        },
+        domAttributes: [
+          'data-vl-calendar="Title" data-vl-time="10:30 AM"',
+          'data-vl-work-calendar="Title" data-vl-kind="work|training|trip" data-vl-time="3:00 PM"',
+          'data-vl-take="Supplement/Dose" data-vl-dose="500mg" data-vl-taken="false"',
+          'data-vl-buy="Product" data-vl-days-left="4"',
+          'data-vl-qa-q="Question" data-vl-qa-a="Answer"'
+        ],
+        repoFilesForAI: ['DEVELOPER_COLLABORATION_NOTES.md', 'public/llms.txt']
+      };
+    }
+  };
+
+  /* =========================================================================
    * 9. PUBLIC API — window.VoiceLayer
    * ========================================================================= */
   window.VoiceLayer = {
@@ -6280,14 +6526,18 @@
     setInventory: function (items) { return Inventory.set(items); },
     /** feed live cart state: VoiceLayer.setCart({ count, total, items }) */
     setCart: function (c) { return Inventory.setCart(c); },
-    /** feed / update visitor profile context: VoiceLayer.setProfile({ name, tier, goals, preferences, ... }) */
+    /** feed / update visitor profile context: VoiceLayer.setProfile({ id, name, tier, goals, preferences, ... }) */
     setProfile: function (p) { return Profile.set(p); },
     getProfile: function () { return Profile.get(); },
+    /** switch or isolate multi-user profile & learning memory: VoiceLayer.setUser(userId, profileObj) */
+    setUser: function (id, p) { return Profile.setUser(id, p); },
+    get users() { return Profile.listUsers(); },
     /** feed structured site / domain Q&A facts: VoiceLayer.setKnowledge([{ q, a, keywords, source }]) */
     setKnowledge: function (f) { return Knowledge.addFacts(f); },
-    /** executive daily briefing setters & getters: weather (temp, raining/dry), calendar, pending to take, pending to buy */
+    /** executive daily briefing setters & getters: weather (temp, raining/dry), calendar, workCalendar, pending to take, pending to buy */
     setWeather: function (w) { return Briefing.setWeather(w); },
     setCalendar: function (c) { return Briefing.setCalendar(c); },
+    setWorkCalendar: function (c) { return Briefing.setWorkCalendar(c); },
     setToTake: function (t) { return Briefing.setToTake(t); },
     setToBuy: function (b) { return Briefing.setToBuy(b); },
     getBriefing: function () { return Briefing.snapshot(); },
@@ -6295,15 +6545,24 @@
       get snapshot() { return Briefing.snapshot(); },
       get weather() { return Briefing.weather(); },
       get calendar() { return Briefing.calendar(); },
+      get workCalendar() { return Briefing.workCalendar(); },
       get toTake() { return Briefing.toTake(); },
       get toBuy() { return Briefing.toBuy(); },
       get summary() { return Briefing.summaryLine(); },
       get fullText() { return Briefing.fullText(); },
       setWeather: function (w) { return Briefing.setWeather(w); },
       setCalendar: function (c) { return Briefing.setCalendar(c); },
+      setWorkCalendar: function (c) { return Briefing.setWorkCalendar(c); },
       setToTake: function (t) { return Briefing.setToTake(t); },
       setToBuy: function (b) { return Briefing.setToBuy(b); },
       refreshWeather: function () { return Briefing.ensureWeather(); }
+    },
+    /** Universal Symbiotic Website-Agent Protocol (handshake, autoDiscover, status, guide) */
+    symbiosis: {
+      handshake: function (spec) { return Symbiosis.handshake(spec); },
+      autoDiscover: function () { return Symbiosis.autoDiscover(); },
+      status: function () { return Symbiosis.status(); },
+      guide: function () { return Symbiosis.guide(); }
     },
     /** full spatial + inventory + profile + behavioral context snapshot */
     getContext: function () { return VL.contextSnapshot(); },
@@ -6326,7 +6585,10 @@
     },
     profile: {
       get data() { return Profile.get(); },
+      get activeUserId() { return Profile.activeUserId(); },
+      get users() { return Profile.listUsers(); },
       set: function (p) { return Profile.set(p); },
+      setUser: function (id, p) { return Profile.setUser(id, p); },
       addGoal: function (g) { return Profile.addGoal(g); }
     },
     behavior: {
@@ -6387,4 +6649,6 @@
   };
 
   VL.init();
+  Symbiosis.autoDiscover();
+  setTimeout(function () { Symbiosis.autoDiscover(); }, 650);
 })();

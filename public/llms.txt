@@ -1,0 +1,106 @@
+# VoiceLayer (`Comandvoice` v0.6.0-vnext) — Universal Symbiotic Voice & Agent Layer
+
+> Drop-in, zero-dependency voice & conversational operating layer (`public/voicelayer/voicelayer.js`) that lives on top of **any website or web application**, absorbs its DOM and runtime state, learns each user's behavior in isolated per-user profiles, answers any question about the site or user, and executes voice commands across all links, buttons, forms, and workflows.
+
+## 1. How Another Developer or AI Agent Integrates VoiceLayer Into Any Website (Symbiotic Handshake)
+
+Drop the script tag into any HTML template or SPA entry (`index.html`):
+
+```html
+<link rel="stylesheet" href="/voicelayer/voicelayer.css" />
+<script
+  src="/voicelayer/voicelayer.js"
+  data-appid="your-app-id"
+  data-Position="bottom-right"
+  data-theme="dark"
+  data-knowledge="true"
+  data-forms="true"
+  defer></script>
+```
+
+### Option A: One-Call Runtime Symbiotic Handshake (Recommended for React / Next.js / Vue / SPAs)
+
+In your root component or auth/store effect, publish `window.__VOICELAYER_SYMBIOSIS__` and call `window.VoiceLayer?.symbiosis?.handshake(...)`:
+
+```js
+const symbiosisSpec = {
+  appName: 'Your Web App Name',
+  userId: currentUser.id, // Isolates behavioral learning & memory per user in localStorage
+  profile: {
+    id: currentUser.id,
+    name: currentUser.name,
+    role: currentUser.role,
+    goals: currentUser.goals,
+    readiness: { score: 82, status: 'Optimal', message: 'Ready for high-output focus' },
+    metrics: {
+      sleep: { current: 7.8 },
+      hrv: { current: 68 },
+      rhr: { current: 52 }
+    },
+    biologicalAge: 34.2,
+    biomarkers: 'ApoB 62 mg/dL, hs-CRP 0.4 mg/L, VO2 Max 54.2',
+    trainingPlan: { todaysWorkout: 'Zone 2 Ride (45 min)', recommendedIntensity: 'Moderate' },
+    nutrition: { dailyCalorieTarget: 2600, macros: { proteinGrams: 180, carbsGrams: 250, fatGrams: 80 } }
+  },
+  // Calendar 1: Primary / Clinical / Personal Appointments
+  calendar: [
+    { title: 'Dr. Chen follow-up (labs review)', time: '09:00', location: 'Telehealth', kind: 'medical' }
+  ],
+  // Calendar 2: Work Meetings, Training Sessions & Business Trips / Flights
+  workCalendar: [
+    { title: 'Weekly review — Performance Board', time: '15:00', location: 'Zoom', kind: 'work' },
+    { title: 'Zone 2 Active Recovery Ride — 45 min', time: '18:30', location: 'Key Biscayne', kind: 'training' },
+    { title: 'NYC Summit Flight & Circadian Prep', time: 'Tomorrow 07:30', location: 'MIA -> JFK', kind: 'trip' }
+  ],
+  // Pending to Take (Supplements / Medications / Tasks)
+  toTake: [
+    { name: 'Liposomal NAD+ Precursor', dose: '500mg', time: 'Morning', taken: false }
+  ],
+  // Pending to Buy (Low-supply Refills / Reorders / Shopping List)
+  toBuy: [
+    { name: 'Magnesium L-Threonate', daysRemaining: 4, price: '$54', status: 'low' }
+  ],
+  // Product Catalog / Inventory
+  inventory: [
+    { id: 'sku-1', name: 'Liposomal NAD+', price: '$88.00', value: 88, category: 'Longevity', inStock: true }
+  ],
+  // Site & Domain Knowledge Q&A Passages
+  knowledge: [
+    { heading: 'Platform Overview', text: 'Description of what the platform does, policies, shipping, etc.' }
+  ],
+  // Custom Voice-Callable Host Actions
+  actions: [
+    {
+      name: 'bookConsultation',
+      phrases: ['book consultation', 'schedule doctor call'],
+      description: 'Opens the telemedicine booking modal',
+      handler: () => openBookingModal()
+    }
+  ]
+};
+
+window.__VOICELAYER_SYMBIOSIS__ = symbiosisSpec;
+window.VoiceLayer?.symbiosis?.handshake?.(symbiosisSpec);
+```
+
+### Option B: Zero-JS Declarative DOM Attributes (Works on Any Static HTML / SSR / Shopify / WordPress Site)
+
+VoiceLayer's `Scanner`, `Briefing`, and `Knowledge` engines automatically absorb HTML attributes without writing any JavaScript:
+- **Primary Calendar:** `<div data-vl-calendar="Dr. Chen Follow-up" data-vl-time="09:00" data-vl-location="Telehealth"></div>`
+- **Second Calendar (Work / Training / Trips):** `<div data-vl-work-calendar="NYC Summit Flight" data-vl-kind="trip" data-vl-time="Tomorrow 07:30" data-vl-location="MIA -> JFK"></div>`
+- **Pending to Take:** `<div data-vl-take="NAD+ Precursor" data-vl-dose="500mg" data-vl-taken="false"></div>`
+- **Pending to Buy:** `<div data-vl-buy="Magnesium L-Threonate" data-vl-days-left="4"></div>`
+- **Domain Q&A Fact:** `<div data-vl-qa-q="How does cold-chain shipping work?" data-vl-qa-a="All peptides ship in insulated 2-8°C medical coolers."></div>`
+- **Declarative JSON Manifest:** `<script type="application/voicelayer+json">{ ...symbiosisSpec }</script>`
+
+## 2. Multi-User Learning & Storage Isolation
+
+When a website is used by multiple users, clients, or athletes:
+- Calling `VoiceLayer.setUser(userId, profile)` (or passing `userId` in `symbiosis.handshake`) isolates that user's profile and behavioral learning under `localStorage["voicelayer.profile.v1:<userId>"]` and registers the user in `localStorage["voicelayer.users.v1"]`.
+- Check active and known users anytime via `VoiceLayer.profile.activeUserId` and `VoiceLayer.users`.
+
+## 3. Self-Diagnostic Inspection for Developers & AI Agents
+
+Run in browser console:
+- `VoiceLayer.symbiosis.status()` — returns connection health across profile, biometrics, primary calendar, work/training/trip calendar, pending to take/buy, inventory, knowledge passages, and interactive DOM controls.
+- `VoiceLayer.symbiosis.guide()` — returns the built-in quick-reference contract.
