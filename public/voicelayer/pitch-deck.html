@@ -1,0 +1,1094 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceLayer — Executive Pitch Deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-ivory: #fbfaf8;
+      --bg-stone: #f4f2ec;
+      --bg-card: #ffffff;
+      --bg-subtle: #faf9f6;
+      --border-warm: #ebe7df;
+      --border-strong: #dedad0;
+      --ink: #181716;
+      --ink-secondary: #5c5851;
+      --ink-muted: #8a857b;
+      --forest: #344a37;
+      --forest-deep: #2b4530;
+      --forest-tint: #f1f5f2;
+      --forest-border: #dbe5dc;
+      --bronze: #785328;
+      --bronze-tint: #faf5ee;
+      --bronze-border: #ede1cf;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: var(--bg-ivory);
+      color: var(--ink);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+
+    .serif {
+      font-family: 'Newsreader', Georgia, serif;
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Top Editorial Ribbon */
+    .deck-header {
+      height: 52px;
+      background: var(--bg-stone);
+      border-bottom: 1px solid var(--border-warm);
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      z-index: 20;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: var(--forest);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: -0.03em;
+    }
+
+    .brand-title {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+    }
+
+    .brand-sub {
+      font-size: 11px;
+      color: var(--ink-secondary);
+      padding-left: 10px;
+      border-left: 1px solid var(--border-strong);
+    }
+
+    .deck-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slide-counter {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-secondary);
+      background: var(--bg-card);
+      border: 1px solid var(--border-warm);
+      padding: 5px 10px;
+      border-radius: 6px;
+    }
+
+    .btn-nav {
+      background: var(--bg-card);
+      border: 1px solid var(--border-strong);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-nav:hover {
+      background: var(--bg-subtle);
+      border-color: var(--ink);
+    }
+
+    .btn-primary {
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
+
+    .btn-primary:hover {
+      background: #2e2c29;
+    }
+
+    /* Slide Viewport */
+    .deck-stage {
+      height: calc(100vh - 52px - 6px);
+      width: 100%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 40px;
+    }
+
+    .slide {
+      display: none;
+      width: 100%;
+      max-width: 1320px;
+      height: 100%;
+      max-height: 760px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-warm);
+      border-radius: 20px;
+      box-shadow: 0 12px 36px -12px rgba(24, 23, 22, 0.06);
+      padding: 48px 56px;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+      animation: fadeSlide 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .slide.active {
+      display: flex;
+    }
+
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Progress Bar */
+    .progress-track {
+      height: 6px;
+      width: 100%;
+      background: var(--bg-stone);
+      border-top: 1px solid var(--border-warm);
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--forest);
+      width: 11.11%;
+      transition: width 0.25s ease;
+    }
+
+    /* Badges & Pills */
+    .eyebrow-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .badge-forest {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: var(--forest-tint);
+      color: var(--forest-deep);
+      border: 1px solid var(--forest-border);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .badge-bronze {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: var(--bronze-tint);
+      color: var(--bronze);
+      border: 1px solid var(--bronze-border);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .badge-stone {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: var(--bg-stone);
+      color: var(--ink-secondary);
+      border: 1px solid var(--border-warm);
+      font-size: 11px;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Typography */
+    h1.slide-title {
+      font-family: 'Newsreader', Georgia, serif;
+      font-size: clamp(30px, 3.3vw, 44px);
+      font-weight: 500;
+      line-height: 1.12;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      margin-bottom: 12px;
+    }
+
+    p.slide-lead {
+      font-size: 15px;
+      line-height: 1.55;
+      color: var(--ink-secondary);
+      max-width: 780px;
+    }
+
+    /* Grid Layouts */
+    .split-2 {
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 36px;
+      align-items: center;
+      flex: 1;
+      margin: 20px 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      flex: 1;
+      margin: 22px 0;
+      align-items: stretch;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin: 18px 0;
+    }
+
+    /* Cards & Visual Panels */
+    .soft-panel {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-warm);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .warm-panel {
+      background: var(--bg-stone);
+      border: 1px solid var(--border-strong);
+      border-radius: 16px;
+      padding: 26px;
+    }
+
+    .visual-box {
+      background: var(--bg-stone);
+      border: 1px solid var(--border-warm);
+      border-radius: 16px;
+      padding: 24px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--bronze);
+      background: var(--bronze-tint);
+      border: 1px solid var(--bronze-border);
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--ink);
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    .card-body {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--ink-secondary);
+    }
+
+    .bullet-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .bullet-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13.5px;
+      line-height: 1.5;
+      color: var(--ink);
+    }
+
+    .bullet-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--forest-tint);
+      border: 1px solid var(--forest-border);
+      color: var(--forest-deep);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 800;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .code-strip {
+      background: var(--ink);
+      color: #f4f2ec;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 14px 18px;
+      border-radius: 10px;
+      line-height: 1.5;
+      overflow-x: auto;
+    }
+
+    .code-strip .hl-green { color: #86efac; }
+    .code-strip .hl-amber { color: #fcd34d; }
+    .code-strip .hl-muted { color: #9c978d; }
+
+    /* Slide Footer */
+    .slide-footer {
+      padding-top: 16px;
+      border-top: 1px solid var(--border-warm);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--ink-muted);
+    }
+
+    .kpi-pill {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .kpi-item strong {
+      color: var(--ink);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Print / PDF Styles */
+    @media print {
+      html, body {
+        overflow: visible;
+        height: auto;
+        background: #fff;
+      }
+      .deck-header, .progress-track {
+        display: none !important;
+      }
+      .deck-stage {
+        height: auto;
+        padding: 0;
+        display: block;
+      }
+      .slide {
+        display: flex !important;
+        page-break-after: always;
+        break-after: page;
+        height: 100vh;
+        max-height: none;
+        border: none;
+        box-shadow: none;
+        border-radius: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <header class="deck-header">
+    <div class="brand">
+      <div class="brand-mark">VL</div>
+      <span class="brand-title">VoiceLayer</span>
+      <span class="brand-sub">Executive Summary &amp; Partner Presentation</span>
+    </div>
+    <div class="deck-controls">
+      <span class="slide-counter" id="slide-indicator">01 / 08</span>
+      <button class="btn-nav" onclick="prevSlide()" title="Previous Slide (Left Arrow)">← Prev</button>
+      <button class="btn-nav" onclick="nextSlide()" title="Next Slide (Right Arrow)">Next →</button>
+      <button class="btn-nav btn-primary" onclick="window.print()" title="Export or Print to PDF">Print / Save PDF</button>
+    </div>
+  </header>
+
+  <!-- Main Stage -->
+  <main class="deck-stage">
+
+    <!-- ================================================================= -->
+    <!-- SLIDE 1: COVER / EXECUTIVE PROPOSITION                            -->
+    <!-- ================================================================= -->
+    <section class="slide active">
+      <div>
+        <div class="eyebrow-row">
+          <span class="badge-forest">VoiceLayer Platform • v0.7.0</span>
+          <span class="badge-bronze">Drop-In Spatial Voice AI</span>
+          <span class="badge-stone">One Script Tag • Zero Dependencies</span>
+        </div>
+        <h1 class="slide-title">Turn Any Website Into a Human,<br/>Action-Taking Voice Experience.</h1>
+        <p class="slide-lead">
+          VoiceLayer is a cloud-native voice &amp; spatial intelligence layer that drops onto any existing website or web application in 60 seconds—absorbing live products,页面 sections, user profiles, and calendars so visitors can talk, navigate, and transact hands-free.
+        </p>
+      </div>
+
+      <div class="split-2">
+        <div class="warm-panel" style="display:flex;flex-direction:column;justify-content:space-between;gap:18px;">
+          <div>
+            <span class="badge-forest" style="margin-bottom:10px;">Why Partners &amp; Acquirers Care</span>
+            <h3 class="card-title" style="font-size:19px;">The Missing Voice Interface for the Modern Web</h3>
+            <ul class="bullet-list">
+              <li>
+                <span class="bullet-dot">✓</span>
+                <div><strong>60-Second Drop-In Deployment:</strong> A single <code>&lt;script&gt;</code> tag works on Shopify, React, Next.js, WordPress, or custom enterprise apps with zero backend rewrite.</div>
+              </li>
+              <li>
+                <span class="bullet-dot">✓</span>
+                <div><strong>Sees What the User Sees:</strong> Tracks active viewport section, hovered product cards, cart state, and SPA tab changes in real time.</div>
+              </li>
+              <li>
+                <span class="bullet-dot">✓</span>
+                <div><strong>Clicks &amp; Verifies on Behalf of the User:</strong> Highlights buttons, dispatches real DOM events, and re-reads the page to confirm the result.</div>
+              </li>
+              <li>
+                <span class="bullet-dot">✓</span>
+                <div><strong>Bilingual &amp; Multi-User Ready:</strong> Native English &amp; Spanish parity with isolated per-user memory and executive daily briefings.</div>
+              </li>
+            </ul>
+          </div>
+          <div class="code-strip">
+            <span class="hl-muted">&lt;!-- Drop into any website header or footer --&gt;</span><br/>
+            &lt;<span class="hl-green">script</span> <span class="hl-amber">src</span>="https://cdn.voicelayer.io/voicelayer.min.js" <span class="hl-amber">defer</span>&gt;&lt;/<span class="hl-green">script</span>&gt;
+          </div>
+        </div>
+
+        <!-- Visual Mockup Illustration (SVG) -->
+        <div class="visual-box">
+          <svg viewBox="0 0 540 360" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <!-- Browser Window Frame -->
+            <rect x="16" y="16" width="508" height="328" rx="14" fill="#fbfaf8" stroke="#dedad0" stroke-width="1.5"/>
+            <rect x="16" y="16" width="508" height="34" rx="14" fill="#f4f2ec"/>
+            <circle cx="36" cy="33" r="5" fill="#d97757"/>
+            <circle cx="52" cy="33" r="5" fill="#d4a359"/>
+            <circle cx="68" cy="33" r="5" fill="#344a37"/>
+            <rect x="140" y="24" width="260" height="18" rx="4" fill="#ffffff" stroke="#ebe7df"/>
+            <text x="270" y="36" font-family="JetBrains Mono, monospace" font-size="9" fill="#6e6960" text-anchor="middle">https://any-enterprise-store.com</text>
+
+            <!-- Top-Docked Frosted Glass VoiceLayer HUD -->
+            <rect x="44" y="62" width="452" height="78" rx="14" fill="#f1f5f2" stroke="#344a37" stroke-width="1.5"/>
+            <!-- Glowing Voice Orb -->
+            <circle cx="88" cy="101" r="24" fill="#344a37" opacity="0.14"/>
+            <circle cx="88" cy="101" r="17" fill="#344a37"/>
+            <!-- Soundwave Bars inside Orb -->
+            <rect x="80" y="95" width="2.5" height="12" rx="1" fill="#ffffff"/>
+            <rect x="85" y="90" width="2.5" height="22" rx="1" fill="#ffffff"/>
+            <rect x="90" y="93" width="2.5" height="16" rx="1" fill="#ffffff"/>
+            <rect x="95" y="97" width="2.5" height="8" rx="1" fill="#ffffff"/>
+
+            <!-- Caption & Spatial Chip -->
+            <rect x="124" y="74" width="148" height="16" rx="4" fill="#ffffff" stroke="#dbe5dc"/>
+            <text x="132" y="85" font-family="JetBrains Mono, monospace" font-size="8.5" font-weight="600" fill="#2b4530">● VIEWING: CATALOG • $79</text>
+            <text x="124" y="106" font-family="Plus Jakarta Sans, sans-serif" font-size="11.5" font-weight="700" fill="#181716">“Done — I clicked Add to Cart, and your cart went from 1 to 2.”</text>
+            <text x="124" y="124" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#344a37">✓ Verified via DOM Read-Back Receipt • 14ms</text>
+
+            <!-- Host Page Content Below Glass HUD -->
+            <rect x="44" y="158" width="216" height="162" rx="10" fill="#ffffff" stroke="#ebe7df"/>
+            <rect x="58" y="172" width="70" height="14" rx="3" fill="#faf5ee" stroke="#ede1cf"/>
+            <text x="64" y="182" font-family="JetBrains Mono, monospace" font-size="8" font-weight="700" fill="#785328">IN STOCK</text>
+            <text x="58" y="206" font-family="Newsreader, serif" font-size="15" font-weight="600" fill="#181716">Studio Wireless Pro</text>
+            <text x="58" y="224" font-family="Plus Jakarta Sans, sans-serif" font-size="10" fill="#6e6960">40-hour battery • Active noise cancelling</text>
+            <text x="58" y="252" font-family="JetBrains Mono, monospace" font-size="14" font-weight="700" fill="#181716">$129.00</text>
+            <rect x="58" y="272" width="188" height="32" rx="7" fill="#f4f2ec" stroke="#dedad0"/>
+            <text x="152" y="292" font-family="Plus Jakarta Sans, sans-serif" font-size="10.5" font-weight="600" fill="#181716" text-anchor="middle">Add to Cart</text>
+
+            <!-- Active Hovered Card with VoiceLayer Highlight Ring -->
+            <rect x="280" y="158" width="216" height="162" rx="10" fill="#ffffff" stroke="#344a37" stroke-width="2"/>
+            <rect x="294" y="172" width="92" height="14" rx="3" fill="#f1f5f2" stroke="#dbe5dc"/>
+            <text x="300" y="182" font-family="JetBrains Mono, monospace" font-size="8" font-weight="700" fill="#2b4530">ACTIVE FOCUS</text>
+            <text x="294" y="206" font-family="Newsreader, serif" font-size="15" font-weight="600" fill="#181716">Pulse Spatial Earbuds</text>
+            <text x="294" y="224" font-family="Plus Jakarta Sans, sans-serif" font-size="10" fill="#6e6960">Hovered card resolved by “add this”</text>
+            <text x="294" y="252" font-family="JetBrains Mono, monospace" font-size="14" font-weight="700" fill="#181716">$79.00</text>
+            <!-- Highlighted Target CTA -->
+            <rect x="290" y="268" width="196" height="40" rx="10" fill="none" stroke="#785328" stroke-width="2" stroke-dasharray="4 3"/>
+            <rect x="294" y="272" width="188" height="32" rx="7" fill="#344a37"/>
+            <text x="388" y="292" font-family="Plus Jakarta Sans, sans-serif" font-size="10.5" font-weight="700" fill="#ffffff" text-anchor="middle">✓ Added to Cart (1 → 2)</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <span>VoiceLayer — Universal Voice &amp; Spatial Web Infrastructure</span>
+        <div class="kpi-pill">
+          <span class="kpi-item">Bundle: <strong>93 KB gzip</strong></span>
+          <span class="kpi-item">Dependencies: <strong>0</strong></span>
+          <span class="kpi-item">E2E Test Suite: <strong>61/61 Passing</strong></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SLIDE 2: THE PROBLEM                                              -->
+    <!-- ================================================================= -->
+    <section class="slide">
+      <div>
+        <div class="eyebrow-row">
+          <span class="badge-bronze">01 • The Market Gap</span>
+          <span class="badge-stone">Why Existing Chatbots Fail</span>
+        </div>
+        <h1 class="slide-title">Websites Were Built for Eyes and Mice—<br/>Not Human Conversation.</h1>
+        <p class="slide-lead">
+          Businesses spend millions driving traffic to web portals and online stores, only to lose visitors in complex menus, small mobile screens, and "dumb" corner chat boxes that cannot see or operate the page.
+        </p>
+      </div>
+
+      <div class="grid-3">
+        <div class="soft-panel">
+          <div>
+            <span class="card-num">01</span>
+            <h3 class="card-title">Corner Chatbots Are Blind to the Page</h3>
+            <p class="card-body">
+              Traditional chat widgets live in an isolated iframe. When a customer asks <em>“How much is this?”</em> or <em>“Is this in stock?”</em>, the bot has no idea what product or section the user is looking at.
+            </p>
+          </div>
+          <div class="badge-stone" style="margin-top:16px;">Result: High Drop-Off &amp; Frustration</div>
+        </div>
+
+        <div class="soft-panel">
+          <div>
+            <span class="card-num">02</span>
+            <h3 class="card-title">Text Bots Cannot Click or Transact</h3>
+            <p class="card-body">
+              Legacy assistants only paste links or FAQ paragraphs. They cannot scroll to a section, switch SPA tabs, click <em>“Add to Cart”</em>, or verify that the cart count actually updated.
+            </p>
+          </div>
+          <div class="badge-stone" style="margin-top:16px;">Result: Zero Action Execution</div>
+        </div>
+
+        <div class="soft-panel">
+          <div>
+            <span class="card-num">03</span>
+            <h3 class="card-title">Months of Custom AI Engineering</h3>
+            <p class="card-body">
+              Building a custom voice agent normally requires wiring bespoke APIs, scraping product catalogs, managing WebSockets, and maintaining fragile selectors every time the website changes.
+            </p>
+          </div>
+          <div class="badge-stone" style="margin-top:16px;">Result: $50K–$150K Integration Cost</div>
+        </div>
+      </div>
+
+      <div class="warm-panel" style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <span class="badge-forest">The VoiceLayer Shift</span>
+          <strong style="font-size:15px;margin-left:10px;color:var(--ink);">Instead of forcing the user to learn the website, VoiceLayer teaches itself the website automatically.</strong>
+        </div>
+        <span class="mono" style="font-size:12px;color:var(--forest-deep);font-weight:700;">100% Cloud • Zero Re-Architecture</span>
+      </div>
+
+      <div class="slide-footer">
+        <span>Slide 02 • Problem &amp; Opportunity</span>
+        <span>VoiceLayer Executive Presentation</span>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SLIDE 3: THE SOLUTION & SYMBIOTIC ARCHITECTURE                    -->
+    <!-- ================================================================= -->
+    <section class="slide">
+      <div>
+        <div class="eyebrow-row">
+          <span class="badge-forest">02 • The Symbiotic Architecture</span>
+          <span class="badge-stone">Auto-Discovery + Deep Host Handshake</span>
+        </div>
+        <h1 class="slide-title">Symbiotic Website Absorption:<br/>Zero-Config on Day 1, Deep Integration on Demand.</h1>
+        <p class="slide-lead">
+          VoiceLayer operates in two simultaneous layers: it immediately scans any standard webpage with zero developer setup, and automatically upgrades into a deep personalized concierge when the host exposes a Symbiosis manifest.
+        </p>
+      </div>
+
+      <div class="split-2">
+        <div class="visual-box" style="background:#fbfaf8;">
+          <svg viewBox="0 0 540 330" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <!-- Left Column: Website Sources -->
+            <text x="85" y="26" font-family="JetBrains Mono, monospace" font-size="9.5" font-weight="700" fill="#785328" text-anchor="middle">HOST WEBSITE SOURCES</text>
+            
+            <rect x="16" y="40" width="138" height="54" rx="9" fill="#ffffff" stroke="#ebe7df" stroke-width="1.5"/>
+            <text x="85" y="63" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#181716" text-anchor="middle">Live DOM &amp; Nav Tabs</text>
+            <text x="85" y="80" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#6e6960" text-anchor="middle">Headings • Buttons • Forms</text>
+
+            <rect x="16" y="106" width="138" height="54" rx="9" fill="#ffffff" stroke="#ebe7df" stroke-width="1.5"/>
+            <text x="85" y="129" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#181716" text-anchor="middle">Catalog &amp; Cart</text>
+            <text x="85" y="146" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#6e6960" text-anchor="middle">JSON-LD • Prices • Stock</text>
+
+            <rect x="16" y="172" width="138" height="54" rx="9" fill="#ffffff" stroke="#ebe7df" stroke-width="1.5"/>
+            <text x="85" y="195" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#181716" text-anchor="middle">User Profile &amp; Data</text>
+            <text x="85" y="212" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#6e6960" text-anchor="middle">Metrics • Goals • History</text>
+
+            <rect x="16" y="238" width="138" height="54" rx="9" fill="#ffffff" stroke="#ebe7df" stroke-width="1.5"/>
+            <text x="85" y="261" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#181716" text-anchor="middle">Dual Calendars</text>
+            <text x="85" y="278" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#6e6960" text-anchor="middle">Appointments • Work • Trips</text>
+
+            <!-- Connector Lines Left -> Center -->
+            <path d="M154 67 L200 135 M154 133 L200 155 M154 199 L200 175 M154 265 L200 195" stroke="#344a37" stroke-width="1.5" stroke-dasharray="3 3"/>
+
+            <!-- Center Core: VoiceLayer Engine -->
+            <rect x="196" y="78" width="148" height="176" rx="16" fill="#344a37"/>
+            <text x="270" y="110" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="#dbe5dc" text-anchor="middle">VOICELAYER CORE</text>
+            <text x="270" y="134" font-family="Newsreader, serif" font-size="17" font-weight="600" fill="#ffffff" text-anchor="middle">Symbiotic Brain</text>
+            <rect x="212" y="148" width="116" height="24" rx="5" fill="#2b4530"/>
+            <text x="270" y="164" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#ffffff" text-anchor="middle">1. &lt;5ms Rule Bypass</text>
+            <rect x="212" y="178" width="116" height="24" rx="5" fill="#2b4530"/>
+            <text x="270" y="194" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#ffffff" text-anchor="middle">2. Jev Action Gate</text>
+            <rect x="212" y="208" width="116" height="24" rx="5" fill="#2b4530"/>
+            <text x="270" y="224" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#ffffff" text-anchor="middle">3. Contextual AI + TTS</text>
+
+            <!-- Connector Lines Center -> Right -->
+            <path d="M344 135 L386 78 M344 166 L386 166 M344 195 L386 254" stroke="#785328" stroke-width="1.5"/>
+
+            <!-- Right Column: Outputs -->
+            <text x="455" y="26" font-family="JetBrains Mono, monospace" font-size="9.5" font-weight="700" fill="#2b4530" text-anchor="middle">VERIFIED OUTCOMES</text>
+
+            <rect x="386" y="46" width="138" height="64" rx="9" fill="#f1f5f2" stroke="#dbe5dc" stroke-width="1.5"/>
+            <text x="455" y="72" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#2b4530" text-anchor="middle">Verified DOM Actions</text>
+            <text x="455" y="90" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#344a37" text-anchor="middle">Click • Navigate • Read-Back</text>
+
+            <rect x="386" y="134" width="138" height="64" rx="9" fill="#faf5ee" stroke="#ede1cf" stroke-width="1.5"/>
+            <text x="455" y="160" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#785328" text-anchor="middle">Executive Briefings</text>
+            <text x="455" y="178" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#785328" text-anchor="middle">Weather • Schedule • Cart</text>
+
+            <rect x="386" y="222" width="138" height="64" rx="9" fill="#ffffff" stroke="#ebe7df" stroke-width="1.5"/>
+            <text x="455" y="248" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#181716" text-anchor="middle">Demand Intelligence</text>
+            <text x="455" y="266" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#6e6960" text-anchor="middle">Unmatched Queries • Funnel</text>
+          </svg>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <div class="soft-panel">
+            <span class="badge-forest" style="align-self:flex-start;margin-bottom:8px;">Level 1 — Automatic DOM &amp; Schema Absorption</span>
+            <h3 class="card-title">Works Out-of-the-Box on Any Public Webpage</h3>
+            <p class="card-body">
+              On page load, VoiceLayer’s <code>Scanner</code> indexes headings, SPA navigation buttons, product cards, prices, stock badges, and <code>Schema.org</code> JSON-LD in under 15 milliseconds—and re-scans automatically via <code>MutationObserver</code> when tabs change.
+            </p>
+          </div>
+
+          <div class="soft-panel">
+            <span class="badge-bronze" style="align-self:flex-start;margin-bottom:8px;">Level 2 — Universal Symbiosis Protocol</span>
+            <h3 class="card-title">Repo-to-Repo &amp; AI-Developer Handshake</h3>
+            <p class="card-body">
+              Any host app or AI coding agent can call <code>VoiceLayer.symbiosis.handshake({...})</code> or set <code>window.__VOICELAYER_SYMBIOSIS__</code> to feed live user profiles, dual calendars, pending regimens, and custom JavaScript actions in one declarative object.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <span>Slide 03 • Symbiotic Architecture</span>
+        <span>Zero-Config Auto-Discovery + Declarative Host Handshake</span>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SLIDE 4: SPATIAL AWARENESS & VERIFIED ACTION RECEIPTS             -->
+    <!-- ================================================================= -->
+    <section class="slide">
+      <div>
+        <div class="eyebrow-row">
+          <span class="badge-forest">03 • Spatial Intelligence &amp; Trust</span>
+          <span class="badge-stone">Deictic Resolution + Read-Back Verification</span>
+        </div>
+        <h1 class="slide-title">It Knows What You’re Looking At—<br/>And Proves Every Action It Takes.</h1>
+        <p class="slide-lead">
+          Unlike LLM wrappers that guess or hallucinate, VoiceLayer combines live viewport geometry with a strict verification pipeline before and after every click.
+        </p>
+      </div>
+
+      <div class="grid-3">
+        <div class="soft-panel">
+          <div>
+            <span class="card-num">01</span>
+            <h3 class="card-title">Deictic “This / These” Resolution</h3>
+            <p class="card-body">
+              Tracks scroll depth, viewport center, and pointer hover. When a user says <em>“How much is this?”</em> or <em>“Add 2 of these to my cart”</em>, VoiceLayer resolves the exact product card in focus.
+            </p>
+          </div>
+          <div class="code-strip" style="margin-top:14px;font-size:11px;">
+            User: <span class="hl-amber">"Add 2 of these to cart"</span><br/>
+            Focus: <span class="hl-green">Pulse Earbuds ($79)</span>
+          </div>
+        </div>
+
+        <div class="soft-panel">
+          <div>
+            <span class="card-num">02</span>
+            <h3 class="card-title">Highlight → Pause → Real Click → Verify</h3>
+            <p class="card-body">
+              Every action shows a visual highlight ring, pauses briefly so any mouse or key touch can cancel it, dispatches real pointer/mouse events, and re-reads the live DOM cart count to issue a <code>verified: true</code> receipt.
+            </p>
+          </div>
+          <div class="code-strip" style="margin-top:14px;font-size:11px;">
+            Receipt: <span class="hl-green">status: "succeeded"</span><br/>
+            Verify: <span class="hl-amber">read_back (cart 3 → 4)</span>
+          </div>
+        </div>
+
+        <div class="soft-panel">
+          <div>
+            <span class="card-num">03</span>
+            <h3 class="card-title">Polite Modal &amp; Auth-Gate Yielding</h3>
+            <p class="card-body">
+              When a host site displays a login screen, password form, or privacy consent dialog (<code>[role="dialog"]</code>), VoiceLayer automatically yields out of the way and restores itself the moment the modal closes.
+            </p>
+          </div>
+          <div class="code-strip" style="margin-top:14px;font-size:11px;">
+            Dialog Open: <span class="hl-amber">data-open="false"</span><br/>
+            Dialog Closed: <span class="hl-green">data-open="true"</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <span>Slide 04 • Spatial Awareness &amp; Verified Execution</span>
+        <span>Deterministic Safety • Never Touches Password or Payment Fields</span>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SLIDE 5: EXECUTIVE BRIEFING, MULTI-USER & BILINGUAL PARITY        -->
+    <!-- ================================================================= -->
+    <section class="slide">
+      <div>
+        <div class="eyebrow-row">
+          <span class="badge-bronze">04 • Personal Concierge Engine</span>
+          <span class="badge-forest">Multi-User &amp; Bilingual EN / ES</span>
+        </div>
+        <h1 class="slide-title">Executive Daily Briefing, Multi-User Isolation,<br/>and Instant Bilingual Parity.</h1>
+        <p class="slide-lead">
+          For portals, membership sites, wellness platforms, and enterprise dashboards, VoiceLayer synthesizes everything pending for the active user into a warm, human briefing.
+        </p>
+      </div>
+
+      <div class="split-2">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">1. Unified 5-Part Executive Briefing</h3>
+              <span class="badge-forest">“What is pending today?”</span>
+            </div>
+            <p class="card-body">
+              Combines <strong>Live Weather</strong> (temperature + sky state vs. rain probability), <strong>Primary Calendar</strong> (appointments), <strong>Second Calendar</strong> (work meetings, training, flights/trips), <strong>Pending to Take/Do</strong>, and <strong>Pending to Buy/Refill</strong> (low supply + multi-quantity <code>N×</code> cart items).
+            </p>
+          </div>
+
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">2. Strict Multi-User Memory Isolation</h3>
+              <span class="badge-bronze">VoiceLayer.setUser(id, profile)</span>
+            </div>
+            <p class="card-body">
+              When switching accounts or personas on shared devices, VoiceLayer partitions profile storage, session behavior, calendars, regimens, and refills per user ID—with zero cross-user data leakage.
+            </p>
+          </div>
+
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">3. Automatic Per-Utterance Bilingual Switching</h3>
+              <span class="badge-stone">English &amp; Español</span>
+            </div>
+            <p class="card-body">
+              Visitors don’t even need to click a language toggle: asking <em>“¿Qué tengo pendiente hoy?”</em> or <em>“¿Cómo dormí anoche?”</em> in default mode automatically responds in natural Spanish.
+            </p>
+          </div>
+        </div>
+
+        <div class="warm-panel" style="height:100%;display:flex;flex-direction:column;justify-content:space-between;">
+          <div>
+            <span class="badge-forest">Live Briefing Transcript Example</span>
+            <p class="serif" style="font-size:17px;line-height:1.55;color:var(--ink);margin-top:14px;font-style:italic;">
+              “Good morning, Alex. Weather today in Miami: 78°F (26°C), overcast — with a chance of rain today. On your calendar today you have 2 events: Dr. Chen follow-up (09:00) and AOSM Check-in (11:30). On your second calendar (work, training &amp; trips): Weekly Board Review @ Zoom (15:00), Zone 2 Recovery Ride (18:30), and NYC Flight @ MIA → JFK (Tomorrow 07:30). Pending to take: 4 daily items. Pending to buy: 2 low-stock refills and 4 items in your cart ($132).”
+            </p>
+          </div>
+          <div style="border-top:1px solid var(--border-strong);padding-top:14px;display:flex;justify-content:space-between;align-items:center;">
+            <span class="mono" style="font-size:11px;color:var(--ink-secondary);">Also answers instant Spanish: “¿Qué tengo pendiente hoy?”</span>
+            <span class="badge-bronze">Sub-10ms Local Synthesis</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <span>Slide 05 • Executive Briefing &amp; Multi-User Concierge</span>
+        <span>Built for High-Touch Client, Athlete, Patient &amp; Executive Portals</span>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SLIDE 6: DEMAND INTELLIGENCE FOR SITE OWNERS                      -->
+    <!-- ================================================================= -->
+    <section class="slide">
+      <div>
+        <div class="eyebrow-row">
+          <span class="badge-forest">05 • B2B ROI &amp; Analytics</span>
+          <span class="badge-stone">Voice Funnel &amp; Unmet Demand</span>
+        </div>
+        <h1 class="slide-title">Turns Visitor Voice Questions Into<br/>Actionable Revenue Intelligence.</h1>
+        <p class="slide-lead">
+          Every time a visitor speaks to VoiceLayer, the platform captures anonymized intent signals—showing business owners exactly what customers want to buy, compare, or find that the site is missing.
+        </p>
+      </div>
+
+      <div class="grid-4">
+        <div class="soft-panel">
+          <span class="badge-bronze" style="align-self:flex-start;margin-bottom:10px;">Unmatched Products</span>
+          <div class="serif" style="font-size:28px;font-weight:600;color:var(--ink);margin-bottom:6px;">Catalog Gaps</div>
+          <p class="card-body">Tracks every product visitors ask for that isn’t in your store or is currently out of stock.</p>
+        </div>
+
+        <div class="soft-panel">
+          <span class="badge-forest" style="align-self:flex-start;margin-bottom:10px;">Head-to-Head</span>
+          <div class="serif" style="font-size:28px;font-weight:600;color:var(--ink);margin-bottom:6px;">Comparisons</div>
+          <p class="card-body">Logs which SKUs buyers compare by voice (<em>“Compare Product A and Product B”</em>) before purchasing.</p>
+        </div>
+
+        <div class="soft-panel">
+          <span class="badge-stone" style="align-self:flex-start;margin-bottom:10px;">Unanswered Qs</span>
+          <div class="serif" style="font-size:28px;font-weight:600;color:var(--ink);margin-bottom:6px;">Content Gaps</div>
+          <p class="card-body">Surfaces policy, shipping, or service questions that weren’t found in your site’s copy.</p>
+        </div>
+
+        <div class="soft-panel">
+          <span class="badge-forest" style="align-self:flex-start;margin-bottom:10px;">Verified Conversions</span>
+          <div class="serif" style="font-size:28px;font-weight:600;color:var(--ink);margin-bottom:6px;">Voice Cart Adds</div>
+          <p class="card-body">Measures exact items and quantities added to cart via voice with verified read-back receipts.</p>
+        </div>
+      </div>
+
+      <div class="warm-panel" style="display:flex;align-items:center;justify-content:space-between;gap:24px;">
+        <div>
+          <h3 class="card-title" style="margin-bottom:4px;">Privacy-First Telemetry by Design</h3>
+          <p class="card-body">
+            VoiceLayer emits structured intent events (<code>voicelayer:command</code> and <code>/api/voice/beacon</code>) without recording raw audio or sensitive personal health/payment inputs.
+          </p>
+        </div>
+        <div class="code-strip" style="flex-shrink:0;">
+          GET <span class="hl-green">/api/voice/demand</span> → <span class="hl-amber">{ totalEvents, unmatchedQueries, topCartAdds }</span>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <span>Slide 06 • Voice Demand Intelligence</span>
+        <span>CORS-Safelisted Cross-Origin Beacon • Real-Time Funnel Aggregation</span>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SLIDE 7: CLOUD ARCHITECTURE, SECURITY & GUARDRAILS                -->
+    <!-- ================================================================= -->
+    <section class="slide">
+      <div>
+        <div class="eyebrow-row">
+          <span class="badge-forest">06 • Cloud &amp; Security Architecture</span>
+          <span class="badge-stone">100% Cloud-Native • Edge Ready</span>
+        </div>
+        <h1 class="slide-title">Engineered for Enterprise Reliability,<br/>Safety, and Zero-Maintenance Scaling.</h1>
+        <p class="slide-lead">
+          VoiceLayer has zero dependency on any local machine. The client is a self-contained ES6 script inside an isolated Shadow DOM, backed by a lightweight stateless edge API.
+        </p>
+      </div>
+
+      <div class="grid-3">
+        <div class="soft-panel">
+          <div>
+            <span class="badge-forest" style="margin-bottom:10px;">3-Tier Voice &amp; AI Resilience</span>
+            <h3 class="card-title">Never Goes Silent</h3>
+            <p class="card-body">
+              Supports <strong>Grok Voice 3.0</strong>, <strong>Deepgram Nova-3 / Aura-2</strong>, and <strong>Groq</strong> on the server, with automatic zero-cost fallback to the browser’s native Web Speech API if cloud keys are absent or rate-limited.
+            </p>
+          </div>
+          <span class="mono" style="font-size:11px;color:var(--forest-deep);">Graceful Degradation Built-In</span>
+        </div>
+
+        <div class="soft-panel">
+          <div>
+            <span class="badge-bronze" style="margin-bottom:10px;">Strict Safety Guardrails</span>
+            <h3 class="card-title">No Unchecked LLM Authority</h3>
+            <p class="card-body">
+              Hard-blocks password, credit-card, and CVV fields from voice interaction. Requires explicit <em>“Yes”</em> confirmation before sensitive clicks (delete, checkout, pay). Intercepts crisis and medical-advice queries deterministically.
+            </p>
+          </div>
+          <span class="mono" style="font-size:11px;color:var(--bronze);">CP_LINT + Jev Noul Guardrail</span>
+        </div>
+
+        <div class="soft-panel">
+          <div>
+            <span class="badge-stone" style="margin-bottom:10px;">Deploy Anywhere</span>
+            <h3 class="card-title">Cloudflare, Vercel, Node, Docker</h3>
+            <p class="card-body">
+              Built on Hono (`src/index.tsx`), deploying in seconds to Cloudflare Workers, Vercel Functions, AWS Lambda, Render, Fly.io, or any standard Node container with remote owner kill-switch control.
+            </p>
+          </div>
+          <span class="mono" style="font-size:11px;color:var(--ink-secondary);">Stateless Edge Worker (~50 KB)</span>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <span>Slide 07 • Cloud &amp; Security Architecture</span>
+        <span>Shadow DOM CSS Isolation • Server-Held API Keys • Owner Kill Switch</span>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SLIDE 8: COMMERCIALIZATION & GO-TO-MARKET                         -->
+    <!-- ================================================================= -->
+    <section class="slide">
+      <div>
+        <div class="eyebrow-row">
+          <span class="badge-bronze">07 • Commercialization &amp; Go-To-Market</span>
+          <span class="badge-forest">Ready to Sell &amp; Scale</span>
+        </div>
+        <h1 class="slide-title">How We Monetize VoiceLayer:<br/>SaaS Subscriptions, White-Label &amp; Enterprise Rollouts.</h1>
+        <p class="slide-lead">
+          Because VoiceLayer installs on any website with a single script tag, a sales partner or acquirer can demonstrate it live on a prospect’s own website in minutes and close recurring SaaS + integration contracts.
+        </p>
+      </div>
+
+      <div class="grid-3">
+        <div class="soft-panel" style="border-color:var(--forest-border);background:var(--forest-tint);">
+          <div>
+            <span class="badge-forest" style="background:#fff;margin-bottom:10px;">Tier 1 • Self-Serve SaaS</span>
+            <h3 class="card-title" style="font-size:18px;">Plug-and-Play Web Widget</h3>
+            <p class="card-body" style="color:var(--ink);">
+              Monthly recurring subscription per domain for E-Commerce stores, clinics, content sites, and SaaS apps. Includes auto-scanning, bilingual voice navigation, and cart verification.
+            </p>
+          </div>
+          <div class="mono" style="font-size:12px;font-weight:700;color:var(--forest-deep);margin-top:14px;">High-Margin Recurring ARR</div>
+        </div>
+
+        <div class="soft-panel" style="border-color:var(--bronze-border);background:var(--bronze-tint);">
+          <div>
+            <span class="badge-bronze" style="background:#fff;margin-bottom:10px;">Tier 2 • Pro &amp; Symbiosis</span>
+            <h3 class="card-title" style="font-size:18px;">Personal Concierge &amp; Briefings</h3>
+            <p class="card-body" style="color:var(--ink);">
+              For member portals, health/wellness platforms, executive dashboards, and multi-user web apps. Includes Symbiosis handshake, Executive Daily Briefings, and Demand Intelligence API.
+            </p>
+          </div>
+          <div class="mono" style="font-size:12px;font-weight:700;color:var(--bronze);margin-top:14px;">Mid-Market &amp; Growth Accounts</div>
+        </div>
+
+        <div class="soft-panel">
+          <div>
+            <span class="badge-stone" style="margin-bottom:10px;">Tier 3 • Enterprise &amp; Agency</span>
+            <h3 class="card-title" style="font-size:18px;">White-Label &amp; Custom Turnkey</h3>
+            <p class="card-body">
+              Full white-label licensing, custom brand voices, dedicated cloud deployment, custom domain guardrails, and turnkey onboarding services for enterprise portfolios and digital agencies.
+            </p>
+          </div>
+          <div class="mono" style="font-size:12px;font-weight:700;color:var(--ink);margin-top:14px;">Enterprise Licensing + Services</div>
+        </div>
+      </div>
+
+      <div class="warm-panel" style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <strong style="font-size:15px;color:var(--ink);">Ready for Live Partner Demos Today:</strong>
+          <span style="font-size:13.5px;color:var(--ink-secondary);margin-left:8px;">Production codebase, 61 automated E2E tests, bilingual EN/ES support, and universal Symbiosis protocol complete.</span>
+        </div>
+        <span class="badge-forest">100% Production Ready</span>
+      </div>
+
+      <div class="slide-footer">
+        <span>Slide 08 • Commercialization &amp; Partner Opportunity</span>
+        <span>VoiceLayer — Universal Voice &amp; Spatial Intelligence</span>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Bottom Progress Bar -->
+  <div class="progress-track">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const indicator = document.getElementById('slide-indicator');
+    const progress = document.getElementById('progress-fill');
+    let current = 0;
+
+    function showSlide(index) {
+      current = (index + slides.length) % slides.length;
+      slides.forEach((s, i) => s.classList.toggle('active', i === current));
+      const num = String(current + 1).padStart(2, '0');
+      const tot = String(slides.length).padStart(2, '0');
+      indicator.textContent = `${num} / ${tot}`;
+      progress.style.width = `${((current + 1) / slides.length) * 100}%`;
+    }
+
+    function nextSlide() { showSlide(current + 1); }
+    function prevSlide() { showSlide(current - 1); }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        e.preventDefault();
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        prevSlide();
+      }
+    });
+  </script>
+</body>
+</html>
