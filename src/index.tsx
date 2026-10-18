@@ -590,15 +590,81 @@ function synthesizeFromContext(question: string, lang: 'en' | 'es', ctx: any): {
   const spatial = ctx?.spatial || {}
   const cart = ctx?.cart || {}
   const profile = ctx?.profile || {}
+  const details = profile?.details || {}
+  const passages: any[] = Array.isArray(ctx?.pagePassages) ? ctx.pagePassages : []
   const inStock = inv.filter((i) => i.inStock !== false)
 
-  // Budget + keyword matching across catalog items
+  // 1. Direct user profile / biometric / nutrition / training / organ / biomarker questions
+  if (/(readiness|recovery|score|puntaje|recuperaci)/i.test(q) && details.readiness) {
+    const r = details.readiness
+    return {
+      text: lang === 'es'
+        ? `Tu puntaje de recuperación es ${r.score}/100 (${r.status || 'óptimo'}). ${r.recommendation || ''}`
+        : `Your readiness score is ${r.score}/100 (${r.status || 'optimal'}). ${r.recommendation || ''}`,
+      action: null
+    }
+  }
+  if (/(sleep|hrv|rhr|heart rate|resting|sueño|frecuencia|training load|carga)/i.test(q) && details.metrics) {
+    const m = details.metrics
+    return {
+      text: lang === 'es'
+        ? `Tus métricas actuales: Sueño ${m.sleep?.current ?? '—'}h (meta ${m.sleep?.baseline ?? 8}h), HRV ${m.hrv?.current ?? '—'}ms (base ${m.hrv?.baseline ?? '—'}ms), pulso en reposo ${m.rhr?.current ?? '—'} bpm y carga de entrenamiento ${m.trainingLoad?.current ?? '—'}.`
+        : `Your current metrics: Sleep ${m.sleep?.current ?? '—'}h (target ${m.sleep?.baseline ?? 8}h), HRV ${m.hrv?.current ?? '—'}ms (baseline ${m.hrv?.baseline ?? '—'}ms), resting heart rate ${m.rhr?.current ?? '—'} bpm, and training load ${m.trainingLoad?.current ?? '—'}.`,
+      action: null
+    }
+  }
+  if (/(workout|training|exercise|zone 2|rutina|entrenamiento|plan)/i.test(q) && details.trainingPlan) {
+    const t = details.trainingPlan
+    return {
+      text: lang === 'es'
+        ? `Tu plan de entrenamiento de hoy es ${t.todaysWorkout} (${t.recommendedIntensity || ''}). ${t.adjustmentReason || ''}`
+        : `Today's training plan is ${t.todaysWorkout} (${t.recommendedIntensity || ''}). ${t.adjustmentReason || ''}`,
+      action: null
+    }
+  }
+  if (/(calorie|macro|protein|carb|fat|hydrat|water|nutrition|nutrici|proteína|calor)/i.test(q) && details.nutrition) {
+    const n = details.nutrition
+    return {
+      text: lang === 'es'
+        ? `Tu meta nutricional diaria es ${n.dailyCalorieTarget} kcal con ${n.macros?.proteinGrams}g de proteína, ${n.macros?.carbsGrams}g de carbohidratos, ${n.macros?.fatGrams}g de grasa y ${n.hydrationLiters}L de hidratación.`
+        : `Your daily nutrition target is ${n.dailyCalorieTarget} kcal with ${n.macros?.proteinGrams}g protein, ${n.macros?.carbsGrams}g carbs, ${n.macros?.fatGrams}g fat, and ${n.hydrationLiters}L hydration (${n.electrolyteNeeds || 'standard electrolytes'}).`,
+      action: null
+    }
+  }
+  if (/(organ|biological age|bio age|aosm|cardio|metabolic|neuro|edad biol|órgano)/i.test(q) && (details.organHealth || details.biologicalAge)) {
+    const bioPart = details.biologicalAge ? `Overall biological age is ${details.biologicalAge} vs chronological age ${details.age || 42}. ` : ''
+    const orgList = Array.isArray(details.organHealth)
+      ? details.organHealth.slice(0, 4).map((o: any) => `${o.name}: bio-age ${o.biologicalAge} (${o.status}, ${o.biologicalReservePercent}% reserve)`).join('; ')
+      : String(details.organHealth || '')
+    return {
+      text: `${bioPart}${orgList}.`,
+      action: null
+    }
+  }
+  if (/(biomarker|blood|lab|apob|crp|glucose|hba1c|testosterone|vitamin d|cortisol|vo2|dexa|sangre|laboratorio)/i.test(q) && details.biomarkers) {
+    const b = details.biomarkers
+    const text = typeof b === 'string' ? b : Object.entries(b).map(([k, v]) => `${k}: ${v}`).join(', ')
+    return {
+      text: lang === 'es' ? `Tus biomarcadores y laboratorios registrados: ${text}.` : `Your recorded lab biomarkers and diagnostics: ${text}.`,
+      action: null
+    }
+  }
+  if (/(who am i|my profile|about me|my age|my role|persona|loyalty|points|quién soy|mi perfil)/i.test(q) && (profile.name || details.role)) {
+    return {
+      text: lang === 'es'
+        ? `Estás conectado como ${profile.name || 'Usuario'}${details.age ? ` (${details.age} años)` : ''}${details.role ? `, ${details.role}` : ''}. Metas activas: ${(profile.goals || []).join(', ') || 'optimización de salud'}.`
+        : `You are signed in as ${profile.name || 'User'}${details.age ? ` (age ${details.age})` : ''}${details.role ? `, ${details.role}` : ''}${details.lifestylePersona ? ` (${details.lifestylePersona})` : ''}. Active goals: ${(profile.goals || []).join(', ') || 'longevity & performance'}.`,
+      action: null
+    }
+  }
+
+  // 2. Budget + keyword matching across catalog items
   const budgetMatch = q.match(/(?:under|below|less than|menos de)\s*[$€£]?\s*(\d+(?:\.\d+)?)/i)
   const maxPrice = budgetMatch ? parseFloat(budgetMatch[1]) : Infinity
-  const qWords = q.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length >= 4 && !/^(what|which|recommend|suggest|have|under|below|less|than|with|about|tell|does|your)$/.test(w))
+  const qWords = q.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length >= 3 && !/^(what|which|where|when|how|who|why|recommend|suggest|have|under|below|less|than|with|about|tell|does|your|the|this|that|for|are|can|you)$/.test(w))
 
   let bestProd: any = inv.find((p) => p.name && q.includes(String(p.name).toLowerCase())) || null
-  if (!bestProd && qWords.length) {
+  if (!bestProd && qWords.length && /(product|supplement|buy|price|cost|stack|creatine|magnesium|omega|whey|nad|nmn|nootropic|sleep|collagen|berberine|electrolyte|vitamin|bottle|catalog|shop|recommend|suggest)/i.test(q)) {
     let bestScore = 0
     for (const p of inStock) {
       if (p.value && p.value > maxPrice) continue
@@ -607,12 +673,37 @@ function synthesizeFromContext(question: string, lang: 'en' | 'es', ctx: any): {
       if (hits > bestScore) { bestScore = hits; bestProd = p }
     }
   }
-  const matchedProd = bestProd || spatial.activeProduct
-  if (matchedProd && (bestProd || /(warranty|garant|battery|bater|spec|feature|detail|water|ship|return|about|this)/i.test(q))) {
+  const matchedProd = bestProd || (/(warranty|garant|battery|bater|spec|feature|detail|water|ship|return|about this|this item|this product)/i.test(q) ? spatial.activeProduct : null)
+  if (matchedProd) {
     const text = lang === 'es'
       ? `Sobre ${matchedProd.name} (${matchedProd.price || 'en catálogo'}, ${matchedProd.inStock !== false ? 'en stock' : 'agotado'}): ${matchedProd.description || 'disponible en esta página'}.`
       : `Regarding ${matchedProd.name} (${matchedProd.price || 'listed'}, ${matchedProd.inStock !== false ? 'in stock' : 'out of stock'}): ${matchedProd.description || 'available on this page'}.`
     return { text, action: { type: 'highlight', target: matchedProd.name } }
+  }
+
+  // 3. Match absorbed website & profile knowledge passages
+  if (passages.length && qWords.length) {
+    let bestP: any = null
+    let bestScore = 0
+    for (const p of passages) {
+      const hBlob = String(p.heading || '').toLowerCase()
+      const tBlob = `${hBlob} ${String(p.text || '').toLowerCase()}`
+      let hits = 0
+      for (const w of qWords) {
+        if (tBlob.includes(w)) hits += hBlob.includes(w) ? 2.2 : 1
+      }
+      if (hits > bestScore) {
+        bestScore = hits
+        bestP = p
+      }
+    }
+    if (bestP && bestScore >= 1) {
+      const snippet = String(bestP.text || '').slice(0, 280)
+      return {
+        text: bestP.heading ? `${bestP.heading}: ${snippet}` : snippet,
+        action: null
+      }
+    }
   }
 
   if (inStock.length) {
@@ -630,8 +721,8 @@ function synthesizeFromContext(question: string, lang: 'en' | 'es', ctx: any): {
 
   return {
     text: lang === 'es'
-      ? 'Puedo ayudarte a explorar las secciones de esta página, consultar precios y stock, o añadir productos al carrito.'
-      : 'I can help you explore sections on this page, check live prices and stock, compare items, or add products to your cart.',
+      ? 'Puedo ayudarte a explorar las secciones de esta página, consultar tu perfil y biomarcadores, o añadir productos al carrito.'
+      : 'I can help you explore any section on this website, check your profile, readiness, organ longevity, lab biomarkers, or manage your supplement regimen and cart.',
     action: null
   }
 }
@@ -650,9 +741,10 @@ app.post('/api/voice/ask', async (c) => {
 
   const sysPrompt = [
     'You are VoiceLayer, a concise, voice-first spatial website assistant embedded on the host webpage.',
-    'Keep your spoken response under 2 short sentences (max 320 characters) suitable for text-to-speech.',
+    'Keep your spoken response under 2-3 short sentences (max 360 characters) suitable for text-to-speech.',
     'NEVER diagnose, prescribe, or tell the user they must take a medication or dose.',
-    'Ground your answer strictly in the provided LIVE PAGE CONTEXT (inventory, activeProduct, currentSection, cart, profile, signals, companion).',
+    'Ground your answer strictly in the provided LIVE PAGE CONTEXT (pagePassages, profile, profile.details, signals, briefing, inventory, activeProduct, currentSection, cart, companion).',
+    'You have full access to the user profile (readiness, sleep, HRV, RHR, trainingPlan, nutrition, macros, biomarkers, organHealth, biohackingProtocols) and absorbed website sections in pagePassages—answer specific questions directly with exact numbers from context.',
     `Respond in ${lang === 'es' ? 'Spanish (es)' : 'English (en)'}.`,
     'Return ONLY valid JSON matching: {"text": "spoken reply", "action": null | {"type": "go"|"click"|"highlight", "target": "element or product name"}}'
   ].join(' ')

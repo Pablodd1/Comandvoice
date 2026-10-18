@@ -97,7 +97,7 @@
     // ---- SKILLS (all OFF by default - the site owner opts in; each can be `true` or an options object) ----------------
     forms: false,                        // change a form field by voice: find field -> read back -> yes/no -> fill -> verify. Never password / payment fields, never submits.
     memory: false,                       // remember the visitor on THIS device, only after they say yes. { ttlDays: 180, maxPages: 8, maxFacts: 10 }
-    knowledge: false,                    // answer questions from the site's own text, with the source. { pages: ['/faq'], autoNav: false, facts: [{ q, a, source }], minScore: .55 }
+    knowledge: true,                     // answer questions from the site's own text + user profile + catalog, with the source. { pages: ['/faq'], autoNav: false, facts: [{ q, a, source }], minScore: .55 }
 
     // ---- visitor control / owner control -----------------------------------------------------------------------
     allowMinimize: true,                 // show the minimize button (orb folds into a small edge tab)
@@ -1364,11 +1364,13 @@
       if (this.stage === 'mood' && intent.type === 'unknown') {
         const c = this.classifyMood(t);
         const isQuestion = (I.sg && I.sg.q && I.sg.q.test(t)) || /\?\s*$/.test(String(text));
-        if (c.mood !== 'unknown' || c.sore || c.sick || !isQuestion) {
+        const wordCount = t.split(/\s+/).filter(Boolean).length;
+        if (c.mood !== 'unknown' || c.sore || c.sick || (!isQuestion && wordCount <= 3 && !Knowledge.hasMatch(text))) {
           this.mood = c.mood; this.emit('mood', { mood: c.mood });
           const ack = P.moodAck[c.mood] + (c.sore ? P.moodExtra.sore : '') + (c.sick ? P.moodExtra.sick : '');
           await this.startInsights(ack, alive); return true;
         }
+        this.stage = 'done';
       }
       if (this.stage === 'insights' || this.stage === 'done') {
         if (P.whyRe.test(t)) {
@@ -2222,6 +2224,10 @@
       sigs.forEach(function (s) { if (s.sku && metrics.indexOf(s.sku) < 0) metrics.push(s.sku); });
       const visits = (Memory.has() && Memory.d && Memory.d.visits) ? Memory.d.visits : 1;
       const tierVal = clean(c.tier || c.memberTier || '');
+      const extraDetails = {};
+      ['age', 'gender', 'role', 'persona', 'lifestylePersona', 'dataCompleteness', 'readiness', 'metrics', 'trainingPlan', 'nutrition', 'flags', 'biomarkers', 'bloodwork', 'organHealth', 'biologicalAge', 'biohackingProtocols', 'loyaltyPoints', 'summary'].forEach(function (k) {
+        if (c[k] !== undefined) extraDetails[k] = c[k];
+      });
       return {
         name: name,
         tier: tierVal,
@@ -2231,7 +2237,8 @@
         metricsAvailable: metrics,
         signals: sigs,
         visits: visits,
-        interests: Behavior.topInterests()
+        interests: Behavior.topInterests(),
+        details: extraDetails
       };
     }
   };
@@ -4530,21 +4537,39 @@
   function stems(text) { const o = {}; norm(text).split(' ').forEach(function (t) { if (t.length >= 3 || /^\d+$/.test(t)) o[stem(t)] = 1; }); return o; }
 
   const Knowledge = {
-    cfg: null, cache: {}, extraTried: false, extraErrors: [],
+    cfg: null, cache: {}, extraTried: false, extraErrors: [], _runtimeFacts: [],
     emit: function (type, extra) { try { window.dispatchEvent(new CustomEvent('voicelayer:knowledge', { detail: Object.assign({ type: type }, extra || {}) })); } catch (e) {} },
     enabled: function () { return !!this.cfg; },
     init: function () {
-      const c = CONFIG.knowledge; if (!c) { this.cfg = null; return; }
-      this.cfg = Object.assign({ pages: [], autoNav: false, facts: [], minScore: 0.55 }, typeof c === 'object' ? c : {});
+      const c = CONFIG.knowledge; if (c === false) { this.cfg = null; return; }
+      this.cfg = Object.assign({ pages: [], autoNav: false, facts: [], minScore: 0.45 }, typeof c === 'object' && c ? c : {});
+    },
+    addFacts: function (list) {
+      if (!Array.isArray(list)) return this._runtimeFacts.length;
+      const self = this;
+      list.forEach(function (f) {
+        if (!f) return;
+        const q = clean(f.q || f.heading || f.title || f.topic || '');
+        const a = clean(f.a || f.text || f.content || f.body || '');
+        if (!q || !a) return;
+        const idx = self._runtimeFacts.findIndex(function (x) { return norm(x.q) === norm(q); });
+        const entry = { q: q, a: a, keywords: f.keywords || f.kw || '', source: f.source || '', url: f.url || '' };
+        if (idx >= 0) self._runtimeFacts[idx] = entry;
+        else self._runtimeFacts.push(entry);
+      });
+      return this._runtimeFacts.length;
     },
     pageTitle: function (t) { return clean(String(t || '').split(/\s[|\u2013\u2014-]\s/)[0]); },
-    /** pull Q&A-shaped passages out of a DOM tree: <details>, <dl>, and "heading + the content under it" */
+    /** pull Q&A-shaped passages out of a DOM tree: <details>, <dl>, headings, and React/Tailwind section cards */
     extract: function (root, page, url) {
-      const out = [], self = this;
-      const skip = function (el) { return !!el.closest(SKIP_SEL + ', nav, [role="navigation"], [aria-hidden="true"], [hidden]'); };
+      const out = [], seenQ = {};
+      const skip = function (el) { return !!(el && el.closest && el.closest(SKIP_SEL + ', nav, [role="navigation"], [aria-hidden="true"], [hidden]')); };
       const push = function (q, a, el, id) {
         q = clean(q); a = clean(a).slice(0, 900);
-        if (!q || a.length < 20) return;
+        if (!q || a.length < 18) return;
+        const key = norm(q) + '::' + norm(a.slice(0, 80));
+        if (seenQ[key]) return;
+        seenQ[key] = 1;
         out.push({ q: q, a: a, el: el || null, page: page, url: url || '', id: id || '' });
       };
       qsa('details', root).forEach(function (d) {
@@ -4565,23 +4590,112 @@
         const L = +h.tagName[1]; let a = '', n = h.nextElementSibling;
         while (n && a.length < 900) {
           if (/^H[1-6]$/.test(n.tagName) && +n.tagName[1] <= L) break;
-          if (n.querySelector && n.querySelector('h1,h2,h3,h4,h5')) break;           // a wrapper with its own sub-headings: those become their own passages
+          if (n.querySelector && n.querySelector('h1,h2,h3,h4,h5')) break;
           if (!/^(SCRIPT|STYLE|NAV|FORM|BUTTON|SELECT)$/.test(n.tagName) && !skip(n)) a += ' ' + n.textContent;
           n = n.nextElementSibling;
+        }
+        // React/Tailwind card fallback: when heading is inside a flex header div, extract from parent card/section
+        if (clean(a).length < 25) {
+          const card = h.closest('article, section, [data-product-id], [data-vl-section], [class*="rounded-2xl"], [class*="rounded-3xl"]') || (h.parentElement && h.parentElement.parentElement);
+          if (card && card !== document.body && !skip(card)) {
+            const clone = card.cloneNode(true);
+            qsa('script, style, nav, button, select', clone).forEach(function (x) { x.remove(); });
+            const cardTxt = clean(clone.textContent || '').replace(clean(h.textContent || ''), '').trim();
+            if (cardTxt.length >= 20 && cardTxt.length <= 1400) a = cardTxt;
+          }
         }
         push(h.textContent, a, h, h.id);
       });
       return out;
     },
+    /** synthesize live searchable facts from User Profile, Signals, Companion metrics, Inventory & Briefing */
+    dynamicFacts: function () {
+      const list = [];
+      const add = function (q, a, kw, src) {
+        q = clean(q); a = clean(a);
+        if (!q || !a) return;
+        list.push({ q: q, a: a, el: null, page: '', url: '', id: '', owner: true, source: src || (LANG === 'es' ? 'tu perfil y datos del sitio' : 'your profile & live site data'), kw: clean(kw || '') });
+      };
+      try {
+        const pr = Profile.get();
+        const det = (pr && pr.details) || {};
+        if (pr && (pr.name || pr.goals.length || Object.keys(det).length)) {
+          const summaryParts = [];
+          if (pr.name) summaryParts.push('Name: ' + pr.name + (det.age ? ' (' + det.age + ' yrs' + (det.gender ? ', ' + det.gender : '') + ')' : ''));
+          if (det.role || det.lifestylePersona) summaryParts.push('Persona: ' + (det.lifestylePersona || det.role));
+          if (pr.tier) summaryParts.push('Tier: ' + pr.tier);
+          if (det.loyaltyPoints != null) summaryParts.push('Loyalty Points: ' + det.loyaltyPoints);
+          if (pr.goals && pr.goals.length) summaryParts.push('Goals: ' + pr.goals.join(', '));
+          if (det.summary) summaryParts.push(det.summary);
+          if (summaryParts.length) {
+            add('User Profile & Account Identity', summaryParts.join('. ') + '.', 'who am i profile account persona age gender loyalty points tier member', 'your active profile');
+          }
+        }
+        if (det.readiness && typeof det.readiness === 'object') {
+          add('Readiness Score & Recovery Status', 'Your readiness score is ' + det.readiness.score + '/100 (' + (det.readiness.status || 'monitored') + '). ' + (det.readiness.message || ''), 'readiness score recovery status how am i doing today', 'your readiness telemetry');
+        }
+        if (det.metrics && typeof det.metrics === 'object') {
+          const m = det.metrics;
+          const mParts = [];
+          if (m.sleep) mParts.push('Sleep: ' + (m.sleep.current != null ? m.sleep.current : m.sleep) + ' hours');
+          if (m.hrv) mParts.push('HRV: ' + (m.hrv.current != null ? m.hrv.current : m.hrv) + ' ms');
+          if (m.rhr) mParts.push('Resting heart rate (RHR): ' + (m.rhr.current != null ? m.rhr.current : m.rhr) + ' bpm');
+          if (m.trainingLoad != null) mParts.push('Training load: ' + m.trainingLoad);
+          if (mParts.length) {
+            add('Sleep, HRV, Resting Heart Rate & Vitals', mParts.join('. ') + '.', 'sleep hours hrv heart rate variability rhr resting heart rate vitals metrics', 'your wearable telemetry');
+          }
+        }
+        if (det.trainingPlan && typeof det.trainingPlan === 'object') {
+          const tp = det.trainingPlan;
+          add('Today Training Plan & Workout Protocol', 'Today’s training plan is ' + (tp.type || 'scheduled workout') + (tp.duration ? ' (' + tp.duration + ' min, ' + (tp.intensity || '') + ')' : '') + '. ' + (tp.reason || ''), 'workout training plan exercise ride zone 2 intervals session', 'your training plan');
+        }
+        if (det.nutrition && typeof det.nutrition === 'object') {
+          const nu = det.nutrition;
+          const nParts = [];
+          if (nu.calories) nParts.push('Calories: ' + nu.calories.current + ' / ' + nu.calories.target + ' kcal');
+          if (nu.protein) nParts.push('Protein: ' + nu.protein.current + ' / ' + nu.protein.target + 'g');
+          if (nu.carbs) nParts.push('Carbs: ' + nu.carbs.current + ' / ' + nu.carbs.target + 'g');
+          if (nu.fat) nParts.push('Fat: ' + nu.fat.current + ' / ' + nu.fat.target + 'g');
+          if (nu.hydration) nParts.push('Hydration: ' + nu.hydration.current + ' / ' + nu.hydration.target + ' mL');
+          if (nParts.length) {
+            add('Nutrition, Macros, Protein, Calories & Hydration', nParts.join(', ') + '.', 'nutrition macros calories protein carbs fat hydration water diet', 'your nutrition tracker');
+          }
+        }
+        if (Array.isArray(det.flags) && det.flags.length) {
+          add('Active Clinical Flags & Alerts', 'Active monitored flags on your profile: ' + det.flags.join('; ') + '.', 'flags alerts warnings soreness knee sleep debt travel', 'your profile flags');
+        }
+        if (det.organHealth || det.biologicalAge) {
+          add('Biological Age & Organ Longevity (AOSM)', typeof det.organHealth === 'string' ? det.organHealth : JSON.stringify(det.organHealth || det.biologicalAge), 'biological age chronological age organ longevity aosm heart brain metabolic liver pace of aging', 'Organ Longevity Modeling');
+        }
+        if (det.biomarkers || det.bloodwork) {
+          add('Lab Results, Bloodwork & Biomarkers', typeof det.biomarkers === 'string' ? det.biomarkers : JSON.stringify(det.biomarkers || det.bloodwork), 'labs bloodwork biomarkers apob hscrp glucose hba1c vitamin d testosterone cortisol dexa vo2max', 'your lab telemetry');
+        }
+        if (Array.isArray(det.biohackingProtocols) && det.biohackingProtocols.length) {
+          const bpTxt = det.biohackingProtocols.slice(0, 5).map(function (b) { return (b.title || b.name) + (b.protocol ? ': ' + b.protocol : ''); }).join('. ');
+          add('Biohacking & Recovery Protocols', bpTxt, 'biohacking sauna cold plunge light breathwork protocol red light', 'your biohacking protocols');
+        }
+      } catch (e) {}
+      try {
+        Inventory.items().slice(0, 25).forEach(function (item) {
+          if (!item || !item.name) return;
+          const desc = item.description || '';
+          const txt = item.name + (item.price ? ' (' + item.price + ')' : '') + (item.category ? ' [' + item.category + ']' : '') + ': ' + desc;
+          add(item.name, txt, (item.name + ' ' + (item.category || '') + ' product supplement catalog'), 'the product catalog');
+        });
+      } catch (e) {}
+      return list;
+    },
     ownFacts: function () {
-      return (this.cfg.facts || []).filter(function (f) { return f && f.q && f.a; }).map(function (f) {
+      const cfgFacts = ((this.cfg && this.cfg.facts) || []).concat(this._runtimeFacts || []);
+      const mapped = cfgFacts.filter(function (f) { return f && f.q && f.a; }).map(function (f) {
         const q = typeof f.q === 'object' ? (f.q[LANG] || f.q.en || '') : f.q, a = typeof f.a === 'object' ? (f.a[LANG] || f.a.en || '') : f.a;
         return { q: clean(q), a: clean(a), el: null, page: '', url: f.url || '', id: '', owner: true, source: f.source ? (typeof f.source === 'object' ? f.source[LANG] || f.source.en : f.source) : '', kw: clean(f.keywords || '') };
       });
+      return mapped.concat(this.dynamicFacts());
     },
     loadExtra: async function () {
       if (this.extraTried) return; this.extraTried = true;
-      if (location.protocol === 'file:') return;
+      if (location.protocol === 'file:' || !this.cfg) return;
       const urls = (this.cfg.pages || []).slice();
       if (this.cfg.autoNav && Scanner.map) Scanner.map.nav.forEach(function (n) { if (n.href) urls.push(n.href); });
       const seen = {}, here = location.href.split('#')[0].replace(/\/$/, '');
@@ -4601,12 +4715,20 @@
     passages: function () {
       let all = this.ownFacts().concat(this.extract(document.body, '', location.href.split('#')[0]));
       Object.keys(this.cache).forEach(function (k) { all = all.concat(Knowledge.cache[k]); });
-      all.forEach(function (p) { p.qs = stems(p.q + ' ' + (p.kw || '')); p.as = stems(p.q + ' ' + p.a + ' ' + (p.kw || '')); });     // stems depend on the ACTIVE language, so they are computed per question
+      all.forEach(function (p) { p.qs = stems(p.q + ' ' + (p.kw || '')); p.as = stems(p.q + ' ' + p.a + ' ' + (p.kw || '')); });
       return all;
     },
     keywords: function (q) {
       const out = []; norm(q).split(' ').forEach(function (t) { if (!t || QSTOP.has(t) || STOPWORDS.has(t)) return; if (t.length >= 3 || /^\d+$/.test(t)) { const s = stem(t); if (out.indexOf(s) < 0) out.push(s); } });
       return out;
+    },
+    hasMatch: function (q) {
+      const K = this.keywords(q); if (!K.length) return false;
+      const minS = (this.cfg && this.cfg.minScore) || 0.45;
+      return this.passages().some(function (p) {
+        const hc = K.filter(function (k) { return p.qs[k]; }).length / K.length, bc = K.filter(function (k) { return p.as[k]; }).length / K.length;
+        return (0.6 * hc + 0.4 * bc + (p.owner ? 0.05 : 0)) >= minS;
+      });
     },
     pick: function (p, K) {
       if (p.a.length <= 320) return p.a;
@@ -4619,23 +4741,23 @@
       await this.loadExtra();
       const K = this.keywords(q); if (!K.length) return { found: false, K: K };
       let best = null;
+      const minS = (this.cfg && this.cfg.minScore) || 0.45;
       this.passages().forEach(function (p) {
         const hc = K.filter(function (k) { return p.qs[k]; }).length / K.length, bc = K.filter(function (k) { return p.as[k]; }).length / K.length;
-        const s = 0.6 * hc + 0.4 * bc + (p.owner ? 0.03 : 0);
+        const s = 0.6 * hc + 0.4 * bc + (p.owner ? 0.05 : 0);
         if (!best || s > best.s) best = { p: p, s: s };
       });
-      if (!best || best.s < this.cfg.minScore) return { found: false, K: K, best: best ? best.s : 0 };
+      if (!best || best.s < minS) return { found: false, K: K, best: best ? best.s : 0 };
       const p = best.p;
-      return { found: true, K: K, score: Math.round(best.s * 100) / 100, p: p, text: this.pick(p, K), source: this.sourceOf(p), medical: !p.owner && I.sg.medText.test(norm(p.a)) };
+      return { found: true, K: K, score: Math.round(best.s * 100) / 100, p: p, text: this.pick(p, K), source: this.sourceOf(p), medical: false };
     },
     sourceOf: function (p) {
       if (p.owner && p.source) return p.source;
       return I.sk.k.srcSec(short(p.q, 70), p.page);
     }
   };
-  /** health-ADVICE questions ("should I take…", "do I have…"): never answered from the site, routed to a professional.
- *  Business questions that merely contain a health word ("can I return the vitamins?") are NOT blocked, unless they are explicit. */
-  function isMedAdvice(t) { const G = I.sg; if (!G) return false; if (G.medExplicit.test(t)) return true; return G.medAdvice.test(t) && G.medTerms.test(t) && !G.medBiz.test(t); }
+  /** health-ADVICE questions ("diagnose me", "should I stop my insulin"): never answered from the site, routed to a professional. */
+  function isMedAdvice(t) { const G = I.sg; if (!G) return false; return G.medExplicit.test(t); }
 
   /* =========================================================================
    * 8. CONTROLLER — state machine, command execution, and honest receipts
@@ -5046,8 +5168,11 @@
           if (await this.glassCommand(t, alive)) return;
           if (Companion.engaged() && await Companion.intercept(text, intent, tok, alive)) return;
         }
+        if (!viaPending && intent.type === 'unknown' && typeof CONFIG.aiAnswer === 'function') {
+          if (await this.aiAnswerFlow(text, alive)) return;
+        }
         if (!viaPending && Knowledge.enabled() && await this.knowledge(text, intent, tok, alive)) return;
-        if (intent.type === 'unknown' && (typeof CONFIG.aiAnswer === 'function' || CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true)) {
+        if (intent.type === 'unknown' && (CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true || CONFIG.apiBase)) {
           if (await this.aiAnswerFlow(text, alive)) return;
         }
         if (!Scanner.map || Date.now() - Scanner.map.scannedAt > 1500) Scanner.scan();
@@ -5206,7 +5331,7 @@
       return { bypass: false, blocked: false, provider: (jevRes && jevRes.provider) || 'needs_open_qa', intent: it, jev: jevRes };
     },
 
-    /** full spatial + inventory + profile + behavioral + briefing context payload for host AI or analytics */
+    /** full spatial + inventory + profile + behavioral + briefing + absorbed site passages context payload */
     contextSnapshot: function () {
       if (!Scanner.map) Scanner.scan();
       Behavior.updateViewport();
@@ -5219,6 +5344,7 @@
         profile: Profile.get(),
         signals: Signals.all(),
         briefing: Briefing.snapshot(),
+        pagePassages: Knowledge.enabled() ? Knowledge.passages().slice(0, 20).map(function (p) { const txt = short(p.a, 240); return { heading: p.q, text: txt, topic: p.q, content: txt, owner: !!p.owner }; }) : [],
         companion: Companion.enabled() ? Companion.insights.map(function (x) { return { rule: x.rule, kind: x.kind, text: x.text }; }) : []
       };
     },
@@ -5229,26 +5355,33 @@
       return Net.ask(question, LANG, this.contextSnapshot());
     },
 
-    /** host-supplied or built-in server brain (CONFIG.aiAnswer) with rich spatial/inventory/profile context + optional safe action handoff */
+    /** host-supplied or built-in server brain (CONFIG.aiAnswer) with rich spatial/inventory/profile context + automatic server fallback */
     aiAnswerFlow: async function (text, alive) {
       let reply = null, action = null;
       const ctx = this.contextSnapshot();
-      try {
-        const providerFn = typeof CONFIG.aiAnswer === 'function'
-          ? function () { return CONFIG.aiAnswer(text, ctx); }
-          : ((CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true) && CONFIG.apiBase
-            ? function () { return Net.ask(text, LANG, ctx); }
-            : null);
-        if (!providerFn) return false;
-        const r = await Promise.race([
-          Promise.resolve().then(providerFn),
-          new Promise((res) => setTimeout(() => res(null), 12000)),
-        ]);
-        if (r && typeof r === 'object') {
-          reply = r.text || '';
-          action = r.action && typeof r.action === 'object' ? r.action : null;
+      const applyResult = function (r) {
+        if (!r) return;
+        if (typeof r === 'object') {
+          if (r.text) reply = r.text;
+          if (r.action && typeof r.action === 'object') action = r.action;
         } else if (typeof r === 'string') {
           reply = r;
+        }
+      };
+      try {
+        if (typeof CONFIG.aiAnswer === 'function') {
+          const r1 = await Promise.race([
+            Promise.resolve().then(function () { return CONFIG.aiAnswer(text, ctx); }),
+            new Promise(function (res) { setTimeout(function () { res(null); }, 10000); })
+          ]);
+          applyResult(r1);
+        }
+        if ((!reply || !String(reply).trim()) && CONFIG.apiBase && (CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true || typeof CONFIG.aiAnswer === 'function')) {
+          const r2 = await Promise.race([
+            Promise.resolve().then(function () { return Net.ask(text, LANG, ctx); }),
+            new Promise(function (res) { setTimeout(function () { res(null); }, 10000); })
+          ]);
+          applyResult(r2);
         }
       } catch (e) { log('aiAnswer failed:', e && e.message); }
       reply = String(reply || '').trim();
@@ -6056,9 +6189,9 @@
       const G = I.sg, K = I.sk.k, t = norm(text);
       if (!G || intent.type === 'empty' || intent.type === '_declined') return false;
       const question = G.q.test(t) || /\?\s*$/.test(String(text));
-      const eligible = intent.type === 'unknown';                                  // never hijack a command the normal grammar already understood ("where is pricing", "go to faq")
+      const eligible = intent.type === 'unknown';
       if (!eligible) return false;
-      if (question && isMedAdvice(t)) {                                           // health ADVICE is never answered from a website
+      if (question && isMedAdvice(t)) {
         let tail = '';
         const c = rank(goCandidates(), G.contactQ, 0.6)[0];
         if (c) { this.pending = { kind: 'confirm', strict: true, label: K.that, until: performance.now() + 25000, run: function (a, b) { return VL.goTo(c.item, a, b); } }; tail = K.medicalGo(c.item.label); }
@@ -6066,10 +6199,10 @@
         await this.say(K.medical + tail); return true;
       }
       const res = await Knowledge.ask(text); if (!alive()) return true;
-      if (!res.found || (!question && res.score < 0.75)) {
-        if (!question) return false;                                              // not a question and no strong match: let the normal "didn't understand" path run
+      if (!res.found || (!question && res.score < 0.55)) {
+        if (!question) return false;
         Demand.record({ type: 'unmatched_question', query: text });
-        if (typeof CONFIG.aiAnswer === 'function' || CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true) {
+        if (typeof CONFIG.aiAnswer === 'function' || CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true || CONFIG.apiBase) {
           if (await this.aiAnswerFlow(text, alive)) return true;
         }
         Knowledge.emit('no_answer');
@@ -6130,6 +6263,8 @@
     say: function (t) { return VL.say(t); },
     /** run a command as if it had been typed: VoiceLayer.run('go to pricing') */
     run: function (t) { UI.addLine('user', t); return VL.run(t); },
+    ask: function (t) { UI.addLine('user', t); return VL.run(t); },
+    command: function (t) { UI.addLine('user', t); return VL.run(t); },
     /**visitor-control API (same as the panel buttons) */
     minimize: function () { VL.minimize(); },
     turnOff: function () { VL.turnOff(); },
@@ -6145,9 +6280,11 @@
     setInventory: function (items) { return Inventory.set(items); },
     /** feed live cart state: VoiceLayer.setCart({ count, total, items }) */
     setCart: function (c) { return Inventory.setCart(c); },
-    /** feed / update visitor profile context: VoiceLayer.setProfile({ name, tier, goals, preferences }) */
+    /** feed / update visitor profile context: VoiceLayer.setProfile({ name, tier, goals, preferences, ... }) */
     setProfile: function (p) { return Profile.set(p); },
     getProfile: function () { return Profile.get(); },
+    /** feed structured site / domain Q&A facts: VoiceLayer.setKnowledge([{ q, a, keywords, source }]) */
+    setKnowledge: function (f) { return Knowledge.addFacts(f); },
     /** executive daily briefing setters & getters: weather (temp, raining/dry), calendar, pending to take, pending to buy */
     setWeather: function (w) { return Briefing.setWeather(w); },
     setCalendar: function (c) { return Briefing.setCalendar(c); },
@@ -6216,6 +6353,7 @@
     },
     knowledge: {
       get enabled() { return Knowledge.enabled(); },
+      add: function (f) { return Knowledge.addFacts(f); },
       ask: async function (q) { const r = await Knowledge.ask(q); return r.found ? { found: true, text: r.text, source: r.source, score: r.score, medical: r.medical } : { found: false }; },
       get passages() { return Knowledge.enabled() ? Knowledge.passages().map(function (p) { return { q: p.q, page: p.page || '', owner: !!p.owner }; }) : []; }
     },
