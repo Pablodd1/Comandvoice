@@ -1,0 +1,23 @@
+{
+  "protocol": "voicelayer-symbiosis",
+  "version": "1.0.0-symbiosis",
+  "voiceLayerVersion": "0.7.0",
+  "engineName": "VoiceLayer Universal Symbiotic Voice & Agent Layer",
+  "repositories": {
+    "voiceLayerEngine": "https://github.com/Pablodd1/Comandvoice",
+    "referenceHostCase1": "https://github.com/Pablodd1/John-wellness-"
+  },
+  "docs": {
+    "llmsTxt": "/llms.txt",
+    "developerCollaborationNotes": "/DEVELOPER_COLLABORATION_NOTES.md"
+  },
+  "handshakeContract": {
+    "globalObject": "window.__VOICELAYER_SYMBIOSIS__",
+    "runtimeMethod": "window.VoiceLayer.symbiosis.handshake(spec)",
+    "statusMethod": "window.VoiceLayer.symbiosis.status()",
+    "guideMethod": "window.VoiceLayer.symbiosis.guide()",
+    "multiUserMethod": "window.VoiceLayer.setUser(userId, profileObj)",
+    "declarativeScript": "script[type=\"application/voicelayer+json\"]",
+    "webMcpBridge": "navigator.modelContext.tools"
+  }
+}

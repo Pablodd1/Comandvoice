@@ -6410,8 +6410,8 @@
       if (spec.signals) Signals.set(spec.signals);
       if (Array.isArray(spec.actions)) {
         spec.actions.forEach(function (act) {
-          if (act && act.name && typeof act.handler === 'function') {
-            Actions.register(act.name, act.handler, act);
+          if (act && (act.name || act.id) && typeof act.handler === 'function') {
+            Actions.register(act);
           }
         });
       }
@@ -6441,7 +6441,7 @@
           if (this._sources.indexOf('WebMCP') < 0) this._sources.push('WebMCP');
           mcpTools.forEach(function (t) {
             if (t && t.name && typeof t.execute === 'function') {
-              Actions.register(t.name, t.execute, { description: t.description || '', phrases: t.phrases || [t.name] });
+              Actions.register({ id: t.name, name: t.name, label: t.description || t.name, phrases: t.phrases || [t.name], handler: t.execute });
             }
           });
         }
@@ -6470,7 +6470,7 @@
           inventoryItems: inv.length,
           knowledgePassages: Knowledge.enabled() ? Knowledge.passages().length : 0,
           dynamicFacts: Knowledge.dynamicFacts().length,
-          domControls: (sm.Summary && sm.Summary.totalInteractive) || (sm.controls ? sm.controls.length : 0),
+          domControls: (sm.nav ? sm.nav.length : 0) + (sm.buttons ? sm.buttons.length : 0) + (sm.products ? sm.products.length : 0),
           customActions: Actions.list().length
         }
       };
