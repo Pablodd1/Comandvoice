@@ -485,7 +485,7 @@
         </div>
         <h1 class="slide-title">Turn Any Website Into a Human,<br/>Action-Taking Voice Experience.</h1>
         <p class="slide-lead">
-          VoiceLayer is a cloud-native voice &amp; spatial intelligence layer that drops onto any existing website or web application in 60 seconds—absorbing live products,页面 sections, user profiles, and calendars so visitors can talk, navigate, and transact hands-free.
+          VoiceLayer is a plug-and-play voice &amp; spatial intelligence layer that drops onto any website in 60 seconds. It listens to natural voice commands, learns how she uses the page, reports user demand symbiotically back to the site owner, and keeps all personal data 100% private.
         </p>
       </div>
 
@@ -493,28 +493,32 @@
         <div class="warm-panel" style="display:flex;flex-direction:column;justify-content:space-between;gap:18px;">
           <div>
             <span class="badge-forest" style="margin-bottom:10px;">Why Partners &amp; Acquirers Care</span>
-            <h3 class="card-title" style="font-size:19px;">The Missing Voice Interface for the Modern Web</h3>
+            <h3 class="card-title" style="font-size:19px;">The First Symbiotic Voice Layer for the Web</h3>
             <ul class="bullet-list">
               <li>
                 <span class="bullet-dot">✓</span>
-                <div><strong>60-Second Drop-In Deployment:</strong> A single <code>&lt;script&gt;</code> tag works on Shopify, React, Next.js, WordPress, or custom enterprise apps with zero backend rewrite.</div>
+                <div><strong>Hands-Free Voice Command &amp; Action:</strong> Users speak naturally; VoiceLayer navigates, selects options, and clicks buttons with verified state confirmation.</div>
               </li>
               <li>
                 <span class="bullet-dot">✓</span>
-                <div><strong>Sees What the User Sees:</strong> Tracks active viewport section, hovered product cards, cart state, and SPA tab changes in real time.</div>
+                <div><strong>60-Second Plug-and-Play Install:</strong> One single <code>&lt;script&gt;</code> tag works on any website—Shopify, React, Webflow, WordPress—with zero backend rewrite.</div>
               </li>
               <li>
                 <span class="bullet-dot">✓</span>
-                <div><strong>Clicks &amp; Verifies on Behalf of the User:</strong> Highlights buttons, dispatches real DOM events, and re-reads the page to confirm the result.</div>
+                <div><strong>Learns Her Usage Patterns:</strong> Adapts to each user's routine, remembering preferences, dual calendars, tasks, and biometrics to provide a personalized daily briefing.</div>
               </li>
               <li>
                 <span class="bullet-dot">✓</span>
-                <div><strong>Bilingual &amp; Multi-User Ready:</strong> Native English &amp; Spanish parity with isolated per-user memory and executive daily briefings.</div>
+                <div><strong>Symbiotic Two-Way Reporting:</strong> Reports customer demand, unmet search queries, and user actions directly back to the host page and site owner in real time.</div>
+              </li>
+              <li>
+                <span class="bullet-dot">✓</span>
+                <div><strong>100% Private &amp; Client-Side Secure:</strong> Speech recognition and personal data stay inside the user's browser—no raw audio recorded, zero data selling.</div>
               </li>
             </ul>
           </div>
           <div class="code-strip">
-            <span class="hl-muted">&lt;!-- Drop into any website header or footer --&gt;</span><br/>
+            <span class="hl-muted">&lt;!-- Plug into any website header or footer --&gt;</span><br/>
             &lt;<span class="hl-green">script</span> <span class="hl-amber">src</span>="https://cdn.voicelayer.io/voicelayer.min.js" <span class="hl-amber">defer</span>&gt;&lt;/<span class="hl-green">script</span>&gt;
           </div>
         </div>
@@ -744,82 +748,18 @@
     </section>
 
     <!-- ================================================================= -->
-    <!-- SLIDE 4: SPATIAL AWARENESS & VERIFIED ACTION RECEIPTS             -->
+    <!-- SLIDE 4: HANDS-FREE VOICE COMMAND & DOM ACTION EXECUTION          -->
     <!-- ================================================================= -->
     <section class="slide">
       <div>
         <div class="eyebrow-row">
-          <span class="badge-forest">03 • Spatial Intelligence &amp; Trust</span>
-          <span class="badge-stone">Deictic Resolution + Read-Back Verification</span>
+          <span class="badge-forest">03 • Hands-Free Voice Commands</span>
+          <span class="badge-bronze">Real DOM Clicks</span>
+          <span class="badge-stone">Closed-Loop Verification</span>
         </div>
-        <h1 class="slide-title">It Knows What You’re Looking At—<br/>And Proves Every Action It Takes.</h1>
+        <h1 class="slide-title">It Doesn't Just Talk—<br/>It Listens, Clicks, and Operates the Page.</h1>
         <p class="slide-lead">
-          Unlike LLM wrappers that guess or hallucinate, VoiceLayer combines live viewport geometry with a strict verification pipeline before and after every click.
-        </p>
-      </div>
-
-      <div class="grid-3">
-        <div class="soft-panel">
-          <div>
-            <span class="card-num">01</span>
-            <h3 class="card-title">Deictic “This / These” Resolution</h3>
-            <p class="card-body">
-              Tracks scroll depth, viewport center, and pointer hover. When a user says <em>“How much is this?”</em> or <em>“Add 2 of these to my cart”</em>, VoiceLayer resolves the exact product card in focus.
-            </p>
-          </div>
-          <div class="code-strip" style="margin-top:14px;font-size:11px;">
-            User: <span class="hl-amber">"Add 2 of these to cart"</span><br/>
-            Focus: <span class="hl-green">Pulse Earbuds ($79)</span>
-          </div>
-        </div>
-
-        <div class="soft-panel">
-          <div>
-            <span class="card-num">02</span>
-            <h3 class="card-title">Highlight → Pause → Real Click → Verify</h3>
-            <p class="card-body">
-              Every action shows a visual highlight ring, pauses briefly so any mouse or key touch can cancel it, dispatches real pointer/mouse events, and re-reads the live DOM cart count to issue a <code>verified: true</code> receipt.
-            </p>
-          </div>
-          <div class="code-strip" style="margin-top:14px;font-size:11px;">
-            Receipt: <span class="hl-green">status: "succeeded"</span><br/>
-            Verify: <span class="hl-amber">read_back (cart 3 → 4)</span>
-          </div>
-        </div>
-
-        <div class="soft-panel">
-          <div>
-            <span class="card-num">03</span>
-            <h3 class="card-title">Polite Modal &amp; Auth-Gate Yielding</h3>
-            <p class="card-body">
-              When a host site displays a login screen, password form, or privacy consent dialog (<code>[role="dialog"]</code>), VoiceLayer automatically yields out of the way and restores itself the moment the modal closes.
-            </p>
-          </div>
-          <div class="code-strip" style="margin-top:14px;font-size:11px;">
-            Dialog Open: <span class="hl-amber">data-open="false"</span><br/>
-            Dialog Closed: <span class="hl-green">data-open="true"</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="slide-footer">
-        <span>Slide 04 • Spatial Awareness &amp; Verified Execution</span>
-        <span>Deterministic Safety • Never Touches Password or Payment Fields</span>
-      </div>
-    </section>
-
-    <!-- ================================================================= -->
-    <!-- SLIDE 5: EXECUTIVE BRIEFING, MULTI-USER & BILINGUAL PARITY        -->
-    <!-- ================================================================= -->
-    <section class="slide">
-      <div>
-        <div class="eyebrow-row">
-          <span class="badge-bronze">04 • Personal Concierge Engine</span>
-          <span class="badge-forest">Multi-User &amp; Bilingual EN / ES</span>
-        </div>
-        <h1 class="slide-title">Executive Daily Briefing, Multi-User Isolation,<br/>and Instant Bilingual Parity.</h1>
-        <p class="slide-lead">
-          For portals, membership sites, wellness platforms, and enterprise dashboards, VoiceLayer synthesizes everything pending for the active user into a warm, human briefing.
+          Unlike passive chatbots that only generate text, VoiceLayer accepts direct voice commands, targets the exact button or form field on the screen, dispatches real clicks, and verifies the result with audible confirmation.
         </p>
       </div>
 
@@ -827,167 +767,437 @@
         <div style="display:flex;flex-direction:column;gap:14px;">
           <div class="soft-panel" style="padding:18px 22px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <h3 class="card-title" style="margin:0;">1. Unified 5-Part Executive Briefing</h3>
-              <span class="badge-forest">“What is pending today?”</span>
+              <h3 class="card-title" style="margin:0;">1. Natural Voice Commands</h3>
+              <span class="badge-forest">Spoken Intent</span>
             </div>
             <p class="card-body">
-              Combines <strong>Live Weather</strong> (temperature + sky state vs. rain probability), <strong>Primary Calendar</strong> (appointments), <strong>Second Calendar</strong> (work meetings, training, flights/trips), <strong>Pending to Take/Do</strong>, and <strong>Pending to Buy/Refill</strong> (low supply + multi-quantity <code>N×</code> cart items).
+              Visitors speak naturally: <em>“Add 2 of these to my cart”</em>, <em>“Show me supplements under $50”</em>, or <em>“Open my appointments”</em>. VoiceLayer parses intent in &lt;10ms without slow round-trips.
             </p>
           </div>
 
           <div class="soft-panel" style="padding:18px 22px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <h3 class="card-title" style="margin:0;">2. Strict Multi-User Memory Isolation</h3>
-              <span class="badge-bronze">VoiceLayer.setUser(id, profile)</span>
+              <h3 class="card-title" style="margin:0;">2. Spatial Focus &amp; Highlight Ring</h3>
+              <span class="badge-bronze">Visible Confirmation</span>
             </div>
             <p class="card-body">
-              When switching accounts or personas on shared devices, VoiceLayer partitions profile storage, session behavior, calendars, regimens, and refills per user ID—with zero cross-user data leakage.
+              Scores visible buttons across 9 DOM signals (viewport center, hover, text relevance) and illuminates the target with a visible green confirmation ring so the user sees exactly what will be clicked.
             </p>
           </div>
 
           <div class="soft-panel" style="padding:18px 22px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <h3 class="card-title" style="margin:0;">3. Automatic Per-Utterance Bilingual Switching</h3>
-              <span class="badge-stone">English &amp; Español</span>
+              <h3 class="card-title" style="margin:0;">3. Real DOM Click &amp; Read-Back Receipt</h3>
+              <span class="badge-stone">Verified Outcome</span>
             </div>
             <p class="card-body">
-              Visitors don’t even need to click a language toggle: asking <em>“¿Qué tengo pendiente hoy?”</em> or <em>“¿Cómo dormí anoche?”</em> in default mode automatically responds in natural Spanish.
+              Dispatches native mouse/pointer events, re-reads the page state (e.g. cart badge count, opened modal), and provides spoken feedback: <em>“Done — I added 2 to your cart, total is now 3.”</em>
             </p>
           </div>
         </div>
 
-        <div class="warm-panel" style="height:100%;display:flex;flex-direction:column;justify-content:space-between;">
-          <div>
-            <span class="badge-forest">Live Briefing Transcript Example</span>
-            <p class="serif" style="font-size:17px;line-height:1.55;color:var(--ink);margin-top:14px;font-style:italic;">
-              “Good morning, Alex. Weather today in Miami: 78°F (26°C), overcast — with a chance of rain today. On your calendar today you have 2 events: Dr. Chen follow-up (09:00) and AOSM Check-in (11:30). On your second calendar (work, training &amp; trips): Weekly Board Review @ Zoom (15:00), Zone 2 Recovery Ride (18:30), and NYC Flight @ MIA → JFK (Tomorrow 07:30). Pending to take: 4 daily items. Pending to buy: 2 low-stock refills and 4 items in your cart ($132).”
-            </p>
-          </div>
-          <div style="border-top:1px solid var(--border-strong);padding-top:14px;display:flex;justify-content:space-between;align-items:center;">
-            <span class="mono" style="font-size:11px;color:var(--ink-secondary);">Also answers instant Spanish: “¿Qué tengo pendiente hoy?”</span>
-            <span class="badge-bronze">Sub-10ms Local Synthesis</span>
-          </div>
+        <!-- SVG Diagram: Voice Command Execution Loop -->
+        <div class="visual-box" style="background:#fbfaf8;">
+          <svg viewBox="0 0 540 330" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <!-- Background Card -->
+            <rect x="12" y="12" width="516" height="306" rx="14" fill="#f4f2ec" stroke="#ebe7df" stroke-width="1.5"/>
+            <text x="270" y="36" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700" fill="#785328" text-anchor="middle">CLOSED-LOOP VOICE COMMAND EXECUTION PIPELINE</text>
+
+            <!-- Step 1: Voice Input -->
+            <rect x="28" y="54" width="484" height="52" rx="10" fill="#ffffff" stroke="#dedad0"/>
+            <circle cx="56" cy="80" r="16" fill="#344a37"/>
+            <rect x="49" y="75" width="2" height="10" rx="1" fill="#ffffff"/>
+            <rect x="53" y="71" width="2" height="18" rx="1" fill="#ffffff"/>
+            <rect x="57" y="73" width="2" height="14" rx="1" fill="#ffffff"/>
+            <rect x="61" y="76" width="2" height="8" rx="1" fill="#ffffff"/>
+            <text x="84" y="74" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="#344a37">STEP 1: SPOKEN COMMAND</text>
+            <text x="84" y="92" font-family="Plus Jakarta Sans, sans-serif" font-size="12" font-weight="700" fill="#181716">“Add 2 of these to my cart”</text>
+            <rect x="400" y="68" width="96" height="24" rx="6" fill="#f1f5f2" stroke="#dbe5dc"/>
+            <text x="448" y="84" font-family="JetBrains Mono, monospace" font-size="9" font-weight="600" fill="#2b4530" text-anchor="middle">&lt;10ms STT Latency</text>
+
+            <!-- Connector Down -->
+            <path d="M270 106 L270 124" stroke="#344a37" stroke-width="2" stroke-dasharray="3 3"/>
+
+            <!-- Step 2 & 3: Targeting + Highlight -->
+            <rect x="28" y="126" width="484" height="86" rx="10" fill="#ffffff" stroke="#344a37" stroke-width="1.5"/>
+            <text x="44" y="148" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="#785328">STEP 2 &amp; 3: SPATIAL SCORER &amp; VISUAL HIGHLIGHT RING</text>
+            
+            <!-- Mini Product Card Representation inside SVG -->
+            <rect x="44" y="158" width="180" height="42" rx="6" fill="#faf9f6" stroke="#dedad0"/>
+            <text x="54" y="174" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#181716">Target: Organic Whey ($42)</text>
+            <text x="54" y="189" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#6e6960">Viewport Focus Score: 0.98</text>
+
+            <!-- Highlighted Button -->
+            <rect x="240" y="156" width="144" height="46" rx="8" fill="none" stroke="#785328" stroke-width="2" stroke-dasharray="4 3"/>
+            <rect x="244" y="160" width="136" height="38" rx="6" fill="#344a37"/>
+            <text x="312" y="184" font-family="Plus Jakarta Sans, sans-serif" font-size="10.5" font-weight="700" fill="#ffffff" text-anchor="middle">Add to Cart</text>
+
+            <rect x="400" y="164" width="96" height="30" rx="6" fill="#faf5ee" stroke="#ede1cf"/>
+            <text x="448" y="183" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="#785328" text-anchor="middle">Real DOM Click</text>
+
+            <!-- Connector Down -->
+            <path d="M270 212 L270 230" stroke="#344a37" stroke-width="2" stroke-dasharray="3 3"/>
+
+            <!-- Step 4: Verification Receipt -->
+            <rect x="28" y="232" width="484" height="68" rx="10" fill="#f1f5f2" stroke="#dbe5dc"/>
+            <circle cx="56" cy="266" r="16" fill="#2b4530"/>
+            <text x="56" y="271" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">✓</text>
+            <text x="84" y="254" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="#2b4530">STEP 4: STATE VERIFICATION &amp; SPOKEN CONFIRMATION</text>
+            <text x="84" y="272" font-family="Plus Jakarta Sans, sans-serif" font-size="11.5" font-weight="700" fill="#181716">“Done — I added 2 to your cart. Cart went from 1 to 3 items ($126).”</text>
+            <text x="84" y="289" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#344a37">DOM Read-Back: Verified cart badge delta (+2) • Latency: 14ms</text>
+          </svg>
         </div>
       </div>
 
       <div class="slide-footer">
-        <span>Slide 05 • Executive Briefing &amp; Multi-User Concierge</span>
-        <span>Built for High-Touch Client, Athlete, Patient &amp; Executive Portals</span>
+        <span>Slide 04 • Voice Command &amp; Action Execution</span>
+        <span>Deterministic DOM Dispatch • Never Hallucinates Actions</span>
       </div>
     </section>
 
     <!-- ================================================================= -->
-    <!-- SLIDE 6: DEMAND INTELLIGENCE FOR SITE OWNERS                      -->
+    <!-- SLIDE 5: LEARNING USER USAGE & PERSONALIZED BRIEFINGS             -->
     <!-- ================================================================= -->
     <section class="slide">
       <div>
         <div class="eyebrow-row">
-          <span class="badge-forest">05 • B2B ROI &amp; Analytics</span>
-          <span class="badge-stone">Voice Funnel &amp; Unmet Demand</span>
+          <span class="badge-bronze">04 • Personal Concierge Engine</span>
+          <span class="badge-forest">Learns User Usage &amp; Habits</span>
+          <span class="badge-stone">Multi-User Memory Isolation</span>
         </div>
-        <h1 class="slide-title">Turns Visitor Voice Questions Into<br/>Actionable Revenue Intelligence.</h1>
+        <h1 class="slide-title">Learns How She Uses the Site—<br/>And Fits Her Daily Life &amp; Routine Perfectly.</h1>
         <p class="slide-lead">
-          Every time a visitor speaks to VoiceLayer, the platform captures anonymized intent signals—showing business owners exactly what customers want to buy, compare, or find that the site is missing.
+          VoiceLayer personalizes to each individual over time. It learns her usage habits, favorite products, and daily schedule—synthesizing weather, dual calendars, tasks, and refills into a calm, spoken executive briefing.
         </p>
       </div>
 
-      <div class="grid-4">
-        <div class="soft-panel">
-          <span class="badge-bronze" style="align-self:flex-start;margin-bottom:10px;">Unmatched Products</span>
-          <div class="serif" style="font-size:28px;font-weight:600;color:var(--ink);margin-bottom:6px;">Catalog Gaps</div>
-          <p class="card-body">Tracks every product visitors ask for that isn’t in your store or is currently out of stock.</p>
+      <div class="split-2">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">1. Learns Habits &amp; Usage Patterns</h3>
+              <span class="badge-forest">Fits Her Needs</span>
+            </div>
+            <p class="card-body">
+              Remembers her repeat questions, favorite products, preferred dosage times, and frequent navigation paths. She never has to repeat herself or hunt through menus.
+            </p>
+          </div>
+
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">2. 5-Pillar Executive Spoken Briefing</h3>
+              <span class="badge-bronze">“What is pending today?”</span>
+            </div>
+            <p class="card-body">
+              Combines <strong>Live Weather</strong> (Miami 78°F + rain alert), <strong>Primary Calendar</strong> (appointments), <strong>Second Calendar</strong> (work meetings, athletic training, flights), <strong>Biometrics/Regimen</strong>, and <strong>Predictive Refills</strong> into one spoken summary.
+            </p>
+          </div>
+
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">3. Multi-User Private Scoping</h3>
+              <span class="badge-stone">VoiceLayer.switchUser('sarah')</span>
+            </div>
+            <p class="card-body">
+              For shared family iPads or clinical kiosks, VoiceLayer isolates memory per user ID (<code>vl_memory_site_user</code>). Her schedule, health biometrics, and cart remain 100% private.
+            </p>
+          </div>
         </div>
 
-        <div class="soft-panel">
-          <span class="badge-forest" style="align-self:flex-start;margin-bottom:10px;">Head-to-Head</span>
-          <div class="serif" style="font-size:28px;font-weight:600;color:var(--ink);margin-bottom:6px;">Comparisons</div>
-          <p class="card-body">Logs which SKUs buyers compare by voice (<em>“Compare Product A and Product B”</em>) before purchasing.</p>
-        </div>
+        <!-- SVG Visual: Personalized Concierge & Briefing Dashboard -->
+        <div class="visual-box" style="background:#fbfaf8;">
+          <svg viewBox="0 0 540 330" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <!-- Outer Container -->
+            <rect x="12" y="12" width="516" height="306" rx="14" fill="#f4f2ec" stroke="#ebe7df" stroke-width="1.5"/>
+            
+            <!-- User Profile Ribbon -->
+            <rect x="26" y="24" width="488" height="38" rx="8" fill="#ffffff" stroke="#dedad0"/>
+            <circle cx="48" cy="43" r="13" fill="#344a37"/>
+            <text x="48" y="47" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">S</text>
+            <text x="70" y="39" font-family="Plus Jakarta Sans, sans-serif" font-size="11.5" font-weight="700" fill="#181716">Active Profile: Sarah M.</text>
+            <text x="70" y="52" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#785328">Personalized Concierge • Isolated Memory Vault</text>
+            <rect x="390" y="32" width="112" height="22" rx="5" fill="#f1f5f2" stroke="#dbe5dc"/>
+            <text x="446" y="46" font-family="JetBrains Mono, monospace" font-size="8.5" font-weight="700" fill="#2b4530" text-anchor="middle">✓ USAGE SYNCED</text>
 
-        <div class="soft-panel">
-          <span class="badge-stone" style="align-self:flex-start;margin-bottom:10px;">Unanswered Qs</span>
-          <div class="serif" style="font-size:28px;font-weight:600;color:var(--ink);margin-bottom:6px;">Content Gaps</div>
-          <p class="card-body">Surfaces policy, shipping, or service questions that weren’t found in your site’s copy.</p>
-        </div>
+            <!-- 4 Dashboard Data Tiles -->
+            <!-- Tile 1: Weather -->
+            <rect x="26" y="70" width="238" height="66" rx="8" fill="#ffffff" stroke="#ebe7df"/>
+            <text x="38" y="88" font-family="JetBrains Mono, monospace" font-size="8.5" font-weight="700" fill="#785328">LOCAL WEATHER</text>
+            <text x="38" y="109" font-family="Newsreader, serif" font-size="17" font-weight="600" fill="#181716">78°F Overcast</text>
+            <text x="38" y="125" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#6e6960">Miami, FL • 40% Rain Probability</text>
 
-        <div class="soft-panel">
-          <span class="badge-forest" style="align-self:flex-start;margin-bottom:10px;">Verified Conversions</span>
-          <div class="serif" style="font-size:28px;font-weight:600;color:var(--ink);margin-bottom:6px;">Voice Cart Adds</div>
-          <p class="card-body">Measures exact items and quantities added to cart via voice with verified read-back receipts.</p>
-        </div>
-      </div>
+            <!-- Tile 2: Biometrics & Tasks -->
+            <rect x="276" y="70" width="238" height="66" rx="8" fill="#ffffff" stroke="#ebe7df"/>
+            <text x="288" y="88" font-family="JetBrains Mono, monospace" font-size="8.5" font-weight="700" fill="#344a37">BIOMETRICS &amp; REGIMEN</text>
+            <text x="288" y="109" font-family="Newsreader, serif" font-size="17" font-weight="600" fill="#181716">Sleep 88% • 4 Pending</text>
+            <text x="288" y="125" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#6e6960">Morning vitamins taken • Hydration goal: 2.5L</text>
 
-      <div class="warm-panel" style="display:flex;align-items:center;justify-content:space-between;gap:24px;">
-        <div>
-          <h3 class="card-title" style="margin-bottom:4px;">Privacy-First Telemetry by Design</h3>
-          <p class="card-body">
-            VoiceLayer emits structured intent events (<code>voicelayer:command</code> and <code>/api/voice/beacon</code>) without recording raw audio or sensitive personal health/payment inputs.
-          </p>
-        </div>
-        <div class="code-strip" style="flex-shrink:0;">
-          GET <span class="hl-green">/api/voice/demand</span> → <span class="hl-amber">{ totalEvents, unmatchedQueries, topCartAdds }</span>
+            <!-- Tile 3: Dual Calendars -->
+            <rect x="26" y="144" width="238" height="74" rx="8" fill="#ffffff" stroke="#ebe7df"/>
+            <text x="38" y="162" font-family="JetBrains Mono, monospace" font-size="8.5" font-weight="700" fill="#181716">DUAL CALENDARS</text>
+            <text x="38" y="180" font-family="Plus Jakarta Sans, sans-serif" font-size="9.5" font-weight="700" fill="#344a37">Primary: Dr. Chen (09:00)</text>
+            <text x="38" y="196" font-family="Plus Jakarta Sans, sans-serif" font-size="9.5" font-weight="600" fill="#785328">Work: Board Review (15:00)</text>
+            <text x="38" y="210" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#6e6960">Training: Zone 2 Ride (18:30)</text>
+
+            <!-- Tile 4: Predictive Refills -->
+            <rect x="276" y="144" width="238" height="74" rx="8" fill="#ffffff" stroke="#ebe7df"/>
+            <text x="288" y="162" font-family="JetBrains Mono, monospace" font-size="8.5" font-weight="700" fill="#785328">SMART CART &amp; REFILLS</text>
+            <text x="288" y="180" font-family="Plus Jakarta Sans, sans-serif" font-size="9.5" font-weight="700" fill="#181716">2 Refills Low: Whey + Zinc</text>
+            <text x="288" y="196" font-family="Plus Jakarta Sans, sans-serif" font-size="9.5" font-weight="600" fill="#344a37">4 Items in Cart ($132)</text>
+            <text x="288" y="210" font-family="Plus Jakarta Sans, sans-serif" font-size="9" fill="#6e6960">Estimated refill window: 3 days</text>
+
+            <!-- Spoken Audio Waveform Output -->
+            <rect x="26" y="226" width="488" height="80" rx="10" fill="#344a37"/>
+            <circle cx="56" cy="254" r="16" fill="#2b4530"/>
+            <rect x="49" y="249" width="2.5" height="10" rx="1" fill="#ffffff"/>
+            <rect x="54" y="244" width="2.5" height="20" rx="1" fill="#ffffff"/>
+            <rect x="59" y="247" width="2.5" height="14" rx="1" fill="#ffffff"/>
+            <rect x="64" y="251" width="2.5" height="6" rx="1" fill="#ffffff"/>
+            <text x="84" y="248" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="#dbe5dc">SPOKEN DAILY BRIEFING</text>
+            <text x="84" y="266" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="600" fill="#ffffff">“Good morning Sarah. Miami is 78°F with a chance of rain. You have Dr. Chen at 09:00, board meeting at 15:00, and 2 refills low in stock.”</text>
+            <text x="84" y="292" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#fcd34d">✓ Bilingual: Automatically speaks Spanish if asked: “¿Qué tengo pendiente hoy?”</text>
+          </svg>
         </div>
       </div>
 
       <div class="slide-footer">
-        <span>Slide 06 • Voice Demand Intelligence</span>
-        <span>CORS-Safelisted Cross-Origin Beacon • Real-Time Funnel Aggregation</span>
+        <span>Slide 05 • Learning User Usage &amp; Personalized Briefings</span>
+        <span>Adapts to Her Lifestyle • Strict Multi-User Privacy Isolation</span>
       </div>
     </section>
 
     <!-- ================================================================= -->
-    <!-- SLIDE 7: CLOUD ARCHITECTURE, SECURITY & GUARDRAILS                -->
+    <!-- ================================================================= -->
+    <!-- SLIDE 6: SYMBIOTIC TWO-WAY REPORTING TO THE HOST PAGE             -->
     <!-- ================================================================= -->
     <section class="slide">
       <div>
         <div class="eyebrow-row">
-          <span class="badge-forest">06 • Cloud &amp; Security Architecture</span>
-          <span class="badge-stone">100% Cloud-Native • Edge Ready</span>
+          <span class="badge-forest">05 • Symbiotic Host Communication</span>
+          <span class="badge-bronze">Two-Way Event Bridge</span>
+          <span class="badge-stone">Unmet Demand Intelligence</span>
         </div>
-        <h1 class="slide-title">Engineered for Enterprise Reliability,<br/>Safety, and Zero-Maintenance Scaling.</h1>
+        <h1 class="slide-title">Lives Symbiotically on the Page—<br/>And Reports User Demand Back to the Site Owner.</h1>
         <p class="slide-lead">
-          VoiceLayer has zero dependency on any local machine. The client is a self-contained ES6 script inside an isolated Shadow DOM, backed by a lightweight stateless edge API.
+          VoiceLayer does not live in an isolated black box. It maintains an active two-way bridge with the host webpage, reporting real-time customer demand, unfulfilled searches, and verified conversions directly back to the site owner.
         </p>
       </div>
 
-      <div class="grid-3">
-        <div class="soft-panel">
-          <div>
-            <span class="badge-forest" style="margin-bottom:10px;">3-Tier Voice &amp; AI Resilience</span>
-            <h3 class="card-title">Never Goes Silent</h3>
+      <div class="split-2">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">1. Two-Way Host Event Bus</h3>
+              <span class="badge-forest">Live DOM Events</span>
+            </div>
             <p class="card-body">
-              Supports <strong>Grok Voice 3.0</strong>, <strong>Deepgram Nova-3 / Aura-2</strong>, and <strong>Groq</strong> on the server, with automatic zero-cost fallback to the browser’s native Web Speech API if cloud keys are absent or rate-limited.
+              Dispatches native JavaScript custom events (<code>vl:action-verified</code>, <code>vl:demand-captured</code>, <code>vl:user-switched</code>) to the host <code>window</code> so the page can react dynamically to spoken commands.
             </p>
           </div>
-          <span class="mono" style="font-size:11px;color:var(--forest-deep);">Graceful Degradation Built-In</span>
+
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">2. Reports Unmet Customer Demand</h3>
+              <span class="badge-bronze">Missing Inventory Alert</span>
+            </div>
+            <p class="card-body">
+              When a visitor asks for a product, service, or date slot not currently on the page, VoiceLayer logs the exact intent—showing business owners what customers are trying to buy so they can stock it.
+            </p>
+          </div>
+
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">3. Automated Conversion Receipts</h3>
+              <span class="badge-stone">Voice ROI Tracking</span>
+            </div>
+            <p class="card-body">
+              Every voice-driven checkout, cart addition, and form submission emits an audit receipt to the site’s analytics (GA4, Mixpanel, custom webhooks) with zero manual tagging.
+            </p>
+          </div>
         </div>
 
-        <div class="soft-panel">
-          <div>
-            <span class="badge-bronze" style="margin-bottom:10px;">Strict Safety Guardrails</span>
-            <h3 class="card-title">No Unchecked LLM Authority</h3>
-            <p class="card-body">
-              Hard-blocks password, credit-card, and CVV fields from voice interaction. Requires explicit <em>“Yes”</em> confirmation before sensitive clicks (delete, checkout, pay). Intercepts crisis and medical-advice queries deterministically.
-            </p>
-          </div>
-          <span class="mono" style="font-size:11px;color:var(--bronze);">CP_LINT + Jev Noul Guardrail</span>
-        </div>
+        <!-- SVG Visual: Symbiotic Host Feedback Loop -->
+        <div class="visual-box" style="background:#fbfaf8;">
+          <svg viewBox="0 0 540 330" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <!-- Background Container -->
+            <rect x="12" y="12" width="516" height="306" rx="14" fill="#f4f2ec" stroke="#ebe7df" stroke-width="1.5"/>
+            <text x="270" y="36" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700" fill="#785328" text-anchor="middle">TWO-WAY SYMBIOTIC REPORTING PIPELINE</text>
 
-        <div class="soft-panel">
-          <div>
-            <span class="badge-stone" style="margin-bottom:10px;">Deploy Anywhere</span>
-            <h3 class="card-title">Cloudflare, Vercel, Node, Docker</h3>
-            <p class="card-body">
-              Built on Hono (`src/index.tsx`), deploying in seconds to Cloudflare Workers, Vercel Functions, AWS Lambda, Render, Fly.io, or any standard Node container with remote owner kill-switch control.
-            </p>
-          </div>
-          <span class="mono" style="font-size:11px;color:var(--ink-secondary);">Stateless Edge Worker (~50 KB)</span>
+            <!-- Box 1: Host Webpage -->
+            <rect x="28" y="56" width="140" height="236" rx="10" fill="#ffffff" stroke="#dedad0"/>
+            <rect x="28" y="56" width="140" height="30" rx="10" fill="#f1f5f2"/>
+            <text x="98" y="76" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="#2b4530" text-anchor="middle">HOST WEBPAGE</text>
+            
+            <rect x="40" y="98" width="116" height="32" rx="5" fill="#faf9f6" stroke="#ebe7df"/>
+            <text x="98" y="114" font-family="Plus Jakarta Sans, sans-serif" font-size="9" font-weight="600" fill="#181716" text-anchor="middle">DOM Buttons &amp; Forms</text>
+            <text x="98" y="124" font-family="JetBrains Mono, monospace" font-size="7.5" fill="#6e6960" text-anchor="middle">Live Catalog &amp; Cart</text>
+
+            <rect x="40" y="138" width="116" height="32" rx="5" fill="#faf9f6" stroke="#ebe7df"/>
+            <text x="98" y="154" font-family="Plus Jakarta Sans, sans-serif" font-size="9" font-weight="600" fill="#181716" text-anchor="middle">User Calendars</text>
+            <text x="98" y="164" font-family="JetBrains Mono, monospace" font-size="7.5" fill="#6e6960" text-anchor="middle">Primary + Work/Trips</text>
+
+            <rect x="40" y="178" width="116" height="42" rx="5" fill="#faf5ee" stroke="#ede1cf"/>
+            <text x="98" y="194" font-family="Plus Jakarta Sans, sans-serif" font-size="9" font-weight="700" fill="#785328" text-anchor="middle">window.dispatchEvent</text>
+            <text x="98" y="210" font-family="JetBrains Mono, monospace" font-size="7.5" fill="#785328" text-anchor="middle">Reacts to VoiceLayer</text>
+
+            <!-- Box 2: Center VoiceLayer Symbiotic Engine -->
+            <rect x="200" y="56" width="140" height="236" rx="12" fill="#344a37"/>
+            <text x="270" y="82" font-family="JetBrains Mono, monospace" font-size="9.5" font-weight="700" fill="#dbe5dc" text-anchor="middle">VOICELAYER</text>
+            <text x="270" y="98" font-family="Newsreader, serif" font-size="14" font-weight="600" fill="#ffffff" text-anchor="middle">Living Symbiosis</text>
+
+            <!-- Flow indicators inside Engine -->
+            <rect x="212" y="112" width="116" height="36" rx="6" fill="#2b4530"/>
+            <text x="270" y="126" font-family="JetBrains Mono, monospace" font-size="8" font-weight="700" fill="#86efac" text-anchor="middle">ABSORBS</text>
+            <text x="270" y="140" font-family="Plus Jakarta Sans, sans-serif" font-size="8.5" fill="#ffffff" text-anchor="middle">Page State &amp; Buttons</text>
+
+            <rect x="212" y="156" width="116" height="36" rx="6" fill="#2b4530"/>
+            <text x="270" y="170" font-family="JetBrains Mono, monospace" font-size="8" font-weight="700" fill="#fcd34d" text-anchor="middle">EXECUTES</text>
+            <text x="270" y="184" font-family="Plus Jakarta Sans, sans-serif" font-size="8.5" fill="#ffffff" text-anchor="middle">Verified DOM Actions</text>
+
+            <rect x="212" y="200" width="116" height="36" rx="6" fill="#2b4530"/>
+            <text x="270" y="214" font-family="JetBrains Mono, monospace" font-size="8" font-weight="700" fill="#dbe5dc" text-anchor="middle">REPORTS</text>
+            <text x="270" y="228" font-family="Plus Jakarta Sans, sans-serif" font-size="8.5" fill="#ffffff" text-anchor="middle">Demand &amp; Receipts</text>
+
+            <!-- Box 3: Right Site Owner Reporting & Analytics -->
+            <rect x="372" y="56" width="140" height="236" rx="10" fill="#ffffff" stroke="#dedad0"/>
+            <rect x="372" y="56" width="140" height="30" rx="10" fill="#faf5ee"/>
+            <text x="442" y="76" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="#785328" text-anchor="middle">SITE OWNER VALUE</text>
+
+            <rect x="384" y="98" width="116" height="48" rx="5" fill="#f1f5f2" stroke="#dbe5dc"/>
+            <text x="442" y="114" font-family="Plus Jakarta Sans, sans-serif" font-size="9" font-weight="700" fill="#2b4530" text-anchor="middle">Unmet Demand Log</text>
+            <text x="442" y="128" font-family="JetBrains Mono, monospace" font-size="8" fill="#344a37" text-anchor="middle">Missing items visitors</text>
+            <text x="442" y="139" font-family="JetBrains Mono, monospace" font-size="8" fill="#344a37" text-anchor="middle">asked to purchase</text>
+
+            <rect x="384" y="154" width="116" height="42" rx="5" fill="#faf9f6" stroke="#ebe7df"/>
+            <text x="442" y="170" font-family="Plus Jakarta Sans, sans-serif" font-size="9" font-weight="700" fill="#181716" text-anchor="middle">Conversion Funnel</text>
+            <text x="442" y="184" font-family="JetBrains Mono, monospace" font-size="8" fill="#6e6960" text-anchor="middle">Voice add-to-cart &amp;</text>
+            <text x="442" y="193" font-family="JetBrains Mono, monospace" font-size="8" fill="#6e6960" text-anchor="middle">booking receipts</text>
+
+            <rect x="384" y="204" width="116" height="34" rx="5" fill="#faf9f6" stroke="#ebe7df"/>
+            <text x="442" y="220" font-family="JetBrains Mono, monospace" font-size="8" font-weight="700" fill="#785328" text-anchor="middle">CRM Webhook</text>
+            <text x="442" y="231" font-family="JetBrains Mono, monospace" font-size="7.5" fill="#6e6960" text-anchor="middle">Exportable JSON/CSV</text>
+
+            <!-- Two-Way Directional Connectors -->
+            <path d="M168 114 L200 126" stroke="#344a37" stroke-width="1.8"/>
+            <path d="M200 216 L168 200" stroke="#785328" stroke-width="1.8" stroke-dasharray="3 3"/>
+            <path d="M340 180 L372 170" stroke="#344a37" stroke-width="1.8"/>
+            <path d="M340 220 L372 220" stroke="#785328" stroke-width="1.8"/>
+          </svg>
         </div>
       </div>
 
       <div class="slide-footer">
-        <span>Slide 07 • Cloud &amp; Security Architecture</span>
-        <span>Shadow DOM CSS Isolation • Server-Held API Keys • Owner Kill Switch</span>
+        <span>Slide 06 • Symbiotic Two-Way Reporting to the Host Page</span>
+        <span>Real-Time Event Dispatch • Turns Unmet Searches Into Product Revenue</span>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SLIDE 7: 100% PRIVATE BY DESIGN & CLIENT-SIDE SECURITY           -->
+    <!-- ================================================================= -->
+    <section class="slide">
+      <div>
+        <div class="eyebrow-row">
+          <span class="badge-forest">06 • Privacy &amp; Cloud Architecture</span>
+          <span class="badge-bronze">100% Private by Design</span>
+          <span class="badge-stone">Zero Local Machine Dependency</span>
+        </div>
+        <h1 class="slide-title">100% Private by Design:<br/>Client-Side Security &amp; Cloud Freedom.</h1>
+        <p class="slide-lead">
+          Total user privacy and data sovereignty. VoiceLayer runs entirely inside the user's browser, keeping personal schedules, biometrics, and voice interactions strictly confidential—with zero dependencies on your local machine.
+        </p>
+      </div>
+
+      <div class="split-2">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">1. Client-Side Edge Execution</h3>
+              <span class="badge-forest">Zero Audio Saved</span>
+            </div>
+            <p class="card-body">
+              Speech recognition and intent parsing execute in the browser. Voice audio is never recorded, transmitted to third-party ad networks, or stored on remote cloud servers.
+            </p>
+          </div>
+
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">2. Isolated Local Storage Vault</h3>
+              <span class="badge-bronze">vl_memory_site_user</span>
+            </div>
+            <p class="card-body">
+              Personal schedules, wellness biometrics, and daily tasks live in encrypted local browser storage. Personal data stays on the user's device—never harvested or sold.
+            </p>
+          </div>
+
+          <div class="soft-panel" style="padding:18px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <h3 class="card-title" style="margin:0;">3. Hard-Coded Safety Guardrails</h3>
+              <span class="badge-stone">Strict Field Shielding</span>
+            </div>
+            <p class="card-body">
+              Automatically ignores passwords, credit cards, CVVs, and sensitive authentication fields. Destructive actions (checkout, delete) require explicit audible confirmation.
+            </p>
+          </div>
+        </div>
+
+        <!-- SVG Visual: Privacy-First Client Sandbox -->
+        <div class="visual-box" style="background:#fbfaf8;">
+          <svg viewBox="0 0 540 330" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <!-- Background Container -->
+            <rect x="12" y="12" width="516" height="306" rx="14" fill="#f4f2ec" stroke="#ebe7df" stroke-width="1.5"/>
+            <text x="270" y="36" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700" fill="#344a37" text-anchor="middle">CLIENT-SIDE PRIVACY &amp; SECURITY SANDBOX</text>
+
+            <!-- Browser Sandbox Boundary -->
+            <rect x="28" y="52" width="310" height="248" rx="12" fill="#ffffff" stroke="#344a37" stroke-width="2"/>
+            <rect x="28" y="52" width="310" height="30" rx="12" fill="#f1f5f2"/>
+            <circle cx="46" cy="67" r="4.5" fill="#344a37"/>
+            <text x="58" y="71" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="#2b4530">LOCAL USER BROWSER ENCLAVE</text>
+
+            <!-- In-Browser Components -->
+            <rect x="42" y="94" width="282" height="42" rx="7" fill="#faf9f6" stroke="#dedad0"/>
+            <text x="54" y="112" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#181716">Local Speech Recognition</text>
+            <text x="54" y="126" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#344a37">Audio processed on-device • No audio recorded</text>
+
+            <rect x="42" y="144" width="282" height="44" rx="7" fill="#faf5ee" stroke="#ede1cf"/>
+            <text x="54" y="162" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#785328">Private Scoped Memory Vault</text>
+            <text x="54" y="176" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#785328">vl_memory_user (Calendars, Biometrics, Tasks)</text>
+
+            <rect x="42" y="196" width="282" height="44" rx="7" fill="#f1f5f2" stroke="#dbe5dc"/>
+            <text x="54" y="214" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700" fill="#2b4530">DOM Safety Guardrail Engine</text>
+            <text x="54" y="228" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#2b4530">Passwords &amp; Credit Cards completely blacklisted</text>
+
+            <rect x="42" y="248" width="282" height="38" rx="7" fill="#ffffff" stroke="#dedad0"/>
+            <text x="183" y="267" font-family="JetBrains Mono, monospace" font-size="8.5" font-weight="700" fill="#181716" text-anchor="middle">✓ ZERO LOCAL MACHINE DEPENDENCIES</text>
+            <text x="183" y="278" font-family="Plus Jakarta Sans, sans-serif" font-size="8" fill="#6e6960" text-anchor="middle">100% Cloud-Served Bundle via Any CDN / Edge</text>
+
+            <!-- External Cloud Barrier -->
+            <rect x="358" y="52" width="154" height="248" rx="12" fill="#ffffff" stroke="#dedad0"/>
+            <rect x="358" y="52" width="154" height="30" rx="12" fill="#faf5ee"/>
+            <text x="435" y="71" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="#785328" text-anchor="middle">EXTERNAL CLOUD</text>
+
+            <!-- Shield Indicator -->
+            <circle cx="435" cy="120" r="26" fill="#f1f5f2" stroke="#344a37" stroke-width="1.5"/>
+            <text x="435" y="127" font-family="Newsreader, serif" font-size="20" font-weight="700" fill="#344a37" text-anchor="middle">🛡️</text>
+
+            <rect x="370" y="160" width="130" height="38" rx="6" fill="#faf5ee" stroke="#ede1cf"/>
+            <text x="435" y="176" font-family="JetBrains Mono, monospace" font-size="8.5" font-weight="700" fill="#785328" text-anchor="middle">NO SURVEILLANCE</text>
+            <text x="435" y="188" font-family="Plus Jakarta Sans, sans-serif" font-size="8" fill="#6e6960" text-anchor="middle">Zero data selling</text>
+
+            <rect x="370" y="206" width="130" height="38" rx="6" fill="#f1f5f2" stroke="#dbe5dc"/>
+            <text x="435" y="222" font-family="JetBrains Mono, monospace" font-size="8.5" font-weight="700" fill="#2b4530" text-anchor="middle">ANONYMOUS DEMAND</text>
+            <text x="435" y="234" font-family="Plus Jakarta Sans, sans-serif" font-size="8" fill="#6e6960" text-anchor="middle">Only item intent logged</text>
+
+            <rect x="370" y="252" width="130" height="34" rx="6" fill="#faf9f6" stroke="#ebe7df"/>
+            <text x="435" y="268" font-family="JetBrains Mono, monospace" font-size="8" font-weight="700" fill="#181716" text-anchor="middle">100% PRIVATE</text>
+            <text x="435" y="278" font-family="Plus Jakarta Sans, sans-serif" font-size="7.5" fill="#6e6960" text-anchor="middle">HIPAA &amp; GDPR aligned</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <span>Slide 07 • 100% Private by Design &amp; Client-Side Security</span>
+        <span>Local Enclave Processing • Zero Audio Recorded • Passwords &amp; Cards Hard-Blocked</span>
       </div>
     </section>
 
