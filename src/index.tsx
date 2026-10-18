@@ -236,7 +236,7 @@ app.use('/api/voice/*', async (c, next) => {
       'access-control-allow-headers': 'content-type', 'access-control-max-age': '600', vary: 'origin'
     })
   }
-  const publicPath = c.req.path === '/api/voice/config' || c.req.path === '/api/voice/health' || c.req.path === '/api/voice/demand' || c.req.path === '/api/voice/weather'
+  const publicPath = c.req.path === '/api/voice/config' || c.req.path === '/api/voice/health' || c.req.path === '/api/voice/demand' || c.req.path === '/api/voice/weather' || c.req.path === '/api/voice/beacon'
   if (!publicPath && !ok) {
     return c.json({ error: 'origin_not_allowed', hint: origin ? 'add this origin to VOICELAYER_ALLOWED_ORIGINS' : 'Origin header required' }, 403)
   }
@@ -906,15 +906,18 @@ app.post('/api/voice/token', async (c) => {
       c.header('cache-control', 'no-store')
       return c.json({ token: j.access_token, expiresIn: j.expires_in ?? 60, listenUrl: 'wss://api.deepgram.com/v1/listen', proxy: true })
     }
-    if (!hasGrokKey(c)) {
+    const hasWsPair = typeof (globalThis as any).WebSocketPair !== 'undefined'
+    if (!hasGrokKey(c) && r.status !== 403) {
       console.warn('deepgram auth/grant failed', r.status)
-      return c.json({ error: 'upstream', status: r.status, hint: r.status === 403 ? 'API key needs Member permission to mint temporary tokens' : undefined }, 502)
+      return c.json({ error: 'upstream', status: r.status }, 502)
     }
+    c.header('cache-control', 'no-store')
+    return c.json({ token: null, expiresIn: 60, listenUrl: null, proxy: hasWsPair, provider: 'browser-fallback', hint: 'using browser speech recognition fallback' })
   }
 
-  // Grok STT proxy mode (keeps XAI_API_KEY strictly server-side via /api/voice/listen WebSocket proxy)
+  const hasWsPair = typeof (globalThis as any).WebSocketPair !== 'undefined'
   c.header('cache-control', 'no-store')
-  return c.json({ token: null, expiresIn: 60, listenUrl: null, proxy: true, provider: 'grok-stt-2.0' })
+  return c.json({ token: null, expiresIn: 60, listenUrl: null, proxy: hasWsPair, provider: 'grok-stt-2.0' })
 })
 
 app.post('/api/voice/speak', async (c) => {

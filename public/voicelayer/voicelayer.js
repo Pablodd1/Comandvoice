@@ -1402,7 +1402,8 @@
       [/daily regimens|\bregimens\b|\bsupplements\b/, ['Daily Regimens', 'Regimens', 'Supplements', 'Medications', 'My Stack']],
       [/lab telemetry|biomarker|\btrends\b/, ['Lab Telemetry', 'Labs', 'Lab Results', 'Biomarkers', 'Trends']],
       [/research base|performance research/, ['Research Base', 'Research', 'Clinical Studies']],
-      [/organ longevity|\baosm\b|organ health/, ['Organ Longevity', 'AOSM', 'Profile', 'Organ Health', 'Biological Age']],
+      [/organ longevity|\baosm\b|organ health/, ['Organ Longevity', 'AOSM', 'Organ Health', 'Biological Age', 'Profile', 'My Profile']],
+      [/manage biomarker profile|\bprofile\b|my account/, ['Profile', 'My Profile', 'Account', 'Biomarker Profile']],
       [/peer network|\bcommunity\b/, ['Peer Network', 'Community', 'Groups']],
       [/privacy.*consent|\bconsent\b/, ['Privacy and Consent', 'Privacy', 'Consent']],
       [/physician portal|clinical monitor/, ['Physician Portal', 'Admin', 'Doctor Portal', 'Clinician Portal']],
@@ -1413,7 +1414,7 @@
       [/safety guide|emergency protocol/, ['Safety Guide', 'Emergency Protocol', 'Emergency']]
     ];
     for (let i = 0; i < rules.length; i++) {
-      if (rules[i][0].test( primary ) || (i !== 10 && rules[i][0].test(joined))) {
+      if (rules[i][0].test( primary ) || (i !== 11 && rules[i][0].test(joined))) {
         for (let j = 0; j < rules[i][1].length; j++) out.push(rules[i][1][j]);
       }
     }
@@ -1464,8 +1465,11 @@
         const aria = clean(el.getAttribute('aria-label') || '');
         const inner = clean(el.innerText || el.textContent || '');
         const dataAliases = clean(el.getAttribute('data-vl-aliases') || '').split(',').map(clean).filter(Boolean);
-        const aliases = expandNavAliases([text, ttl, aria, inner].concat(dataAliases).filter(Boolean));
-        m.buttons.push({ text: text, aliases: aliases, nav: isNav, el: el, disabled: isDisabled(el) });
+        const baseLabels = [text, ttl, aria, inner].concat(dataAliases).filter(Boolean);
+        const aliases = (isNav || !PRICE_RE.test(text)) ? expandNavAliases(baseLabels) : uniq(baseLabels);
+        const rec = { text: text, aliases: aliases, nav: isNav, el: el, disabled: isDisabled(el) };
+        m.buttons.push(rec);
+        if (isNav && !rec.disabled) m.nav.push({ text: inner || text, aliases: aliases, href: '', rawHref: '', nav: true, el: el });
       });
 
       // prices: text nodes that look like a price
@@ -1776,26 +1780,21 @@
       if (!a || !b || a.id === b.id) return null;
       return { a: a, b: b };
     },
-    cart: function () {
-      if (this._cartOverride) {
-        return {
-          count: Number(this._cartOverride.count || 0),
-          total: this._cartOverride.total || '',
-          items: Array.isArray(this._cartOverride.items) ? this._cartOverride.items.slice() : [],
-          found: true
-        };
-      }
+    domCart: function () {
       const el = document.querySelector(CONFIG.cartCountSelector);
       const totalEl = document.querySelector('[data-cart-total], #cart-total, .cart-total');
       if (!el && !totalEl) {
-        const btn = document.querySelector('button[title*="Cart" i], button[aria-label*="Cart" i], a[title*="Cart" i], [data-vl-cart]');
+        const btn = document.querySelector('button[title*="Cart" i], button[aria-label*="Cart" i], a[title*="Cart" i], [data-vl-cart]') ||
+          qsa('header button, nav button, header a, nav a').find(function (b) {
+            if (b.closest(SKIP_SEL)) return false;
+            const t = clean(b.textContent || '');
+            return /\b(cart|carrito|bag|basket)\b/i.test(t) || /^\d+\s*\(\s*[$€£¥]\s*\d/.test(t);
+          });
         if (btn) {
           const txt = clean(btn.textContent || '');
           const mCount = txt.match(/\b(\d+)\b/);
           const mPrice = txt.match(PRICE_RE);
-          if (mCount) {
-            return { count: parseInt(mCount[1], 10) || 0, total: mPrice ? clean(mPrice[0]) : '', items: [], found: true };
-          }
+          return { count: mCount ? (parseInt(mCount[1], 10) || 0) : 0, total: mPrice ? clean(mPrice[0]) : '', items: [], found: true };
         }
         return { count: null, total: '', items: [], found: false };
       }
@@ -1810,6 +1809,21 @@
         if (nm) domItems.push({ name: short(nm, 60) });
       });
       return { count: isNaN(n) ? 0 : n, total: tot, items: domItems, found: true };
+    },
+    cart: function () {
+      const dc = this.domCart();
+      if (this._cartOverride) {
+        const ovCount = Number(this._cartOverride.count || 0);
+        const liveCount = (dc.found && dc.count != null && !isNaN(dc.count)) ? dc.count : ovCount;
+        const liveTotal = (dc.found && dc.count !== ovCount && dc.total) ? dc.total : (this._cartOverride.total || dc.total || '');
+        return {
+          count: liveCount,
+          total: liveTotal,
+          items: Array.isArray(this._cartOverride.items) ? this._cartOverride.items.slice() : [],
+          found: true
+        };
+      }
+      return dc;
     },
     recommend: function (topic) {
       const items = this.items().filter(function (x) { return x.inStock !== false && !x.rx && x.approved !== false; });
@@ -1933,10 +1947,25 @@
   const Briefing = {
     _weather: null,
     _weatherFetchedAt: 0,
+    _ownerUserId: '',
     _calendar: [],
     _workCalendar: [],
     _toTake: [],
     _toBuy: [],
+    resetForUser: function (uid, profObj) {
+      this._ownerUserId = clean(uid || '');
+      this._calendar = [];
+      this._workCalendar = [];
+      this._toTake = [];
+      this._toBuy = [];
+      if (profObj && typeof profObj === 'object') {
+        const src = Object.assign({}, (profObj.details && typeof profObj.details === 'object') ? profObj.details : {}, profObj);
+        if (Array.isArray(src.calendar || src.appointments)) this.setCalendar(src.calendar || src.appointments);
+        if (Array.isArray(src.workCalendar || src.trips)) this.setWorkCalendar(src.workCalendar || src.trips);
+        if (Array.isArray(src.toTake)) this.setToTake(src.toTake);
+        if (Array.isArray(src.toBuy)) this.setToBuy(src.toBuy);
+      }
+    },
     defaultWeather: function () {
       return {
         city: 'Miami',
@@ -1954,7 +1983,8 @@
       const d = this.defaultWeather();
       const tempF = w.tempF != null ? Number(w.tempF) : (w.temp != null ? Number(w.temp) : d.tempF);
       const tempC = w.tempC != null ? Number(w.tempC) : Math.round(((tempF - 32) * 5) / 9);
-      const raining = w.raining != null ? !!w.raining : /rain|shower|storm|lluv/i.test(String(w.condition && (w.condition.en || w.condition) || ''));
+      const rawCond = String((w.condition && (w.condition.en || w.condition)) || '');
+      const raining = w.raining != null ? !!w.raining : /rain|drizzle|shower|storm|thunder|lluv|chubasc|torment/i.test(rawCond);
       const dry = w.dry != null ? !!w.dry : !raining;
       const condEn = typeof w.condition === 'object' ? (w.condition.en || d.condition.en) : (w.condition || (raining ? 'raining' : (dry ? 'sunny and dry' : 'partly cloudy')));
       const condEs = typeof w.condition === 'object' ? (w.condition.es || d.condition.es) : (raining ? 'lloviendo' : (dry ? 'soleado y seco' : 'parcialmente nublado'));
@@ -2005,7 +2035,7 @@
     setToTake: function (items) {
       this._toTake = Array.isArray(items) ? items.filter(Boolean).map(function (x) {
         if (typeof x === 'string') return { label: clean(x), time: '' };
-        return { label: clean(loc(x.label || x.name || '')), time: clean(x.time || x.due || '') };
+        return { label: clean(loc(x.label || x.name || '')), time: clean(x.time || x.due || x.timing || '') };
       }).filter(function (x) { return !!x.label; }) : [];
       return this.toTake();
     },
@@ -2026,6 +2056,13 @@
         const full = tm && lbl.indexOf(tm) < 0 ? (lbl + ' (' + tm + ')') : lbl;
         if (!out.some(function (x) { return norm(x.label) === norm(lbl); })) out.push({ label: lbl, time: tm || '', kind: kind || '', text: full });
       };
+      const det = (typeof Profile !== 'undefined' && Profile.get && Profile.get().details) || {};
+      if (Array.isArray(det.appointments || det.calendar)) {
+        (det.appointments || det.calendar).forEach(function (c) {
+          if (!c) return;
+          add(typeof c === 'string' ? c : loc(c.label || c.title || c.doctorName || c.specialty || ''), c.time || c.due || c.date || '', c.kind || 'appointment');
+        });
+      }
       this._calendar.forEach(function (c) { add(c.label, c.time, c.kind); });
       if (Array.isArray(CONFIG.calendar)) CONFIG.calendar.forEach(function (c) { add(typeof c === 'string' ? c : loc(c.label || c.title), c.time || c.due, c.kind); });
       Signals.all().forEach(function (s) {
@@ -2043,11 +2080,26 @@
     },
     workCalendar: function () {
       const out = [];
+      const det = (typeof Profile !== 'undefined' && Profile.get && Profile.get().details) || {};
+      const tp = det.trainingPlan && typeof det.trainingPlan === 'object' ? det.trainingPlan : null;
+      const tpLabel = tp ? clean(tp.type || tp.todayWorkout || tp.workout || tp.title || '') : '';
       const add = function (lbl, tm, kind) {
         lbl = clean(lbl); if (!lbl) return;
+        if (tpLabel && /^training:/i.test(lbl) && norm(lbl).indexOf(norm(tpLabel)) < 0) return;
         const full = tm && lbl.indexOf(tm) < 0 ? (lbl + ' (' + tm + ')') : lbl;
         if (!out.some(function (x) { return norm(x.label) === norm(lbl); })) out.push({ label: lbl, time: tm || '', kind: kind || 'work', text: full });
       };
+      if (tpLabel) {
+        const durStr = tp.duration ? (String(tp.duration).indexOf('min') >= 0 ? String(tp.duration) : (tp.duration + ' min')) : '';
+        const tpMeta = [durStr, tp.intensity || ''].filter(Boolean).join(', ');
+        add('Training: ' + tpLabel, tpMeta || 'Today', 'training');
+      }
+      if (Array.isArray(det.workCalendar || det.trips)) {
+        (det.workCalendar || det.trips).forEach(function (c) {
+          if (!c) return;
+          add(typeof c === 'string' ? c : (loc(c.label || c.title || c.name || '') + (c.location ? ' @ ' + clean(c.location) : '')), c.time || c.due || '', c.kind || 'work');
+        });
+      }
       this._workCalendar.forEach(function (c) { add(c.label, c.time, c.kind); });
       if (Array.isArray(CONFIG.workCalendar)) CONFIG.workCalendar.forEach(function (c) { add(typeof c === 'string' ? c : loc(c.label || c.title), c.time || c.due, c.kind || 'work'); });
       Signals.all().forEach(function (s) {
@@ -2065,6 +2117,17 @@
         const full = tm && lbl.indexOf(tm) < 0 ? (lbl + ' (' + tm + ')') : lbl;
         if (!out.some(function (x) { return norm(x.label) === norm(lbl); })) out.push({ label: lbl, time: tm || '', text: full });
       };
+      const det = (typeof Profile !== 'undefined' && Profile.get && Profile.get().details) || {};
+      const userRegimen = Array.isArray(det.activeRegimen) ? det.activeRegimen : (Array.isArray(det.regimen) ? det.regimen : null);
+      if (userRegimen && userRegimen.length) {
+        userRegimen.forEach(function (r) {
+          if (!r || r.takenToday === true || r.taken === true) return;
+          const nm = clean(loc(r.name || r.label || ''));
+          const ds = clean(r.dose || r.dosage || '');
+          const lbl = nm + (ds && nm.indexOf(ds) < 0 ? ' ' + ds : '');
+          add(lbl, clean(r.timing || r.time || ''));
+        });
+      }
       this._toTake.forEach(function (c) { add(c.label, c.time); });
       Signals.all().forEach(function (s) {
         if (/^(supplement|medication|take|regimen|dose|protocol)$/i.test(s.type)) add(s.label, s.value);
@@ -2085,6 +2148,17 @@
         lbl = clean(lbl); if (!lbl) return;
         if (!out.some(function (x) { return norm(x.label) === norm(lbl); })) out.push({ label: lbl, text: lbl });
       };
+      const det = (typeof Profile !== 'undefined' && Profile.get && Profile.get().details) || {};
+      const userRegimen = Array.isArray(det.activeRegimen) ? det.activeRegimen : (Array.isArray(det.regimen) ? det.regimen : null);
+      if (userRegimen && userRegimen.length) {
+        userRegimen.forEach(function (r) {
+          const days = r && (r.daysRemaining != null ? Number(r.daysRemaining) : (r.daysLeft != null ? Number(r.daysLeft) : null));
+          if (days != null && isFinite(days) && days <= 10) {
+            const nm = clean(loc(r.name || r.label || ''));
+            if (nm) add(nm + ' (' + days + (LANG === 'es' ? ' días restantes)' : ' days left)'));
+          }
+        });
+      }
       this._toBuy.forEach(function (c) { add(c.label); });
       Signals.all().forEach(function (s) {
         if (/^(refill|buy|reorder|restock|shopping)$/i.test(s.type)) add(s.label);
@@ -2099,7 +2173,7 @@
       });
       const c = Inventory.cart();
       if (c && c.count > 0) {
-        const itemNames = c.items && c.items.length ? (' (' + c.items.slice(0, 3).map(function (x) { return x.name || x.id; }).join(', ') + ')') : '';
+        const itemNames = c.items && c.items.length ? (' (' + c.items.slice(0, 4).map(function (x) { return (x.qty && x.qty > 1 ? x.qty + '× ' : '') + (x.name || x.id); }).join(', ') + ')') : '';
         const tot = c.total ? (' — ' + c.total) : '';
         add(LANG === 'es'
           ? (c.count + (c.count === 1 ? ' artículo en tu carrito' : ' artículos en tu carrito') + itemNames + tot)
@@ -2122,11 +2196,16 @@
     weatherText: function () {
       const w = this.weather();
       const cond = loc(w.condition) || (w.raining ? (LANG === 'es' ? 'lloviendo' : 'raining') : (LANG === 'es' ? 'soleado y seco' : 'sunny and dry'));
+      const activePrecip = /rain|drizzle|shower|storm|thunder|downpour|precip|lluv|llovizn|chubasc|torment/i.test(cond);
       if (LANG === 'es') {
-        const rainStr = w.raining ? 'está lloviendo ahora mismo' : (w.dry ? 'el día está seco, sin lluvia' : 'sin lluvia en este momento');
+        const rainStr = w.raining
+          ? (activePrecip ? 'está lloviendo ahora mismo' : 'con probabilidad de lluvia hoy')
+          : (w.dry ? 'el día está seco, sin lluvia' : 'sin lluvia en este momento');
         return 'El tiempo hoy' + (w.city ? ' en ' + w.city : '') + ': ' + w.tempC + '°C (' + w.tempF + '°F), ' + cond + ' — ' + rainStr + '.';
       }
-      const rainStr = w.raining ? 'it is raining right now' : (w.dry ? 'it is dry with no rain' : 'no rain right now');
+      const rainStr = w.raining
+        ? (activePrecip ? 'it is raining right now' : 'with a chance of rain today')
+        : (w.dry ? 'it is dry with no rain' : 'no rain right now');
       return 'Weather today' + (w.city ? ' in ' + w.city : '') + ': ' + w.tempF + '°F (' + w.tempC + '°C), ' + cond + ' — ' + rainStr + '.';
     },
     calendarText: function () {
@@ -2182,6 +2261,7 @@
     summaryLine: function () {
       const w = this.weather();
       const cond = loc(w.condition) || (w.raining ? (LANG === 'es' ? 'lloviendo' : 'raining') : (LANG === 'es' ? 'seco y despejado' : 'sunny and dry'));
+      const activePrecip = /rain|drizzle|shower|storm|thunder|downpour|precip|lluv|llovizn|chubasc|torment/i.test(cond);
       const bio = this.biometricsText();
       const cal = this.calendar();
       const wcal = this.workCalendar();
@@ -2189,14 +2269,14 @@
       const buy = this.toBuy();
       const parts = [];
       if (LANG === 'es') {
-        parts.push('Hoy hace ' + w.tempC + '°C (' + w.tempF + '°F), ' + cond + (w.raining ? ' con lluvia.' : ' y sin lluvia.'));
+        parts.push('Hoy hace ' + w.tempC + '°C (' + w.tempF + '°F), ' + cond + (w.raining ? (activePrecip ? ' con lluvia.' : ' con probabilidad de lluvia.') : ' y sin lluvia.'));
         if (bio) parts.push(bio);
         if (cal.length) parts.push('En tu calendario: ' + andList(cal.slice(0, 3).map(function (x) { return x.text; })) + '.');
         if (wcal.length) parts.push('Trabajo, entreno y viajes: ' + andList(wcal.slice(0, 3).map(function (x) { return x.text; })) + '.');
         if (take.length) parts.push('Pendiente por tomar: ' + andList(take.slice(0, 3).map(function (x) { return x.text; })) + '.');
         if (buy.length) parts.push('Pendiente por comprar: ' + andList(buy.slice(0, 3).map(function (x) { return x.text; })) + '.');
       } else {
-        parts.push('It’s ' + w.tempF + '°F (' + w.tempC + '°C), ' + cond + (w.raining ? ' with rain today.' : ' and dry today.'));
+        parts.push('It’s ' + w.tempF + '°F (' + w.tempC + '°C), ' + cond + (w.raining ? (activePrecip ? ' with rain today.' : ' with a chance of rain today.') : ' and dry today.'));
         if (bio) parts.push(bio);
         if (cal.length) parts.push('On your calendar: ' + andList(cal.slice(0, 3).map(function (x) { return x.text; })) + '.');
         if (wcal.length) parts.push('Work, training & trips: ' + andList(wcal.slice(0, 3).map(function (x) { return x.text; })) + '.');
@@ -2293,6 +2373,9 @@
         try { savedUser = JSON.parse(store.get(KEYS.prof + ':' + uid) || 'null'); } catch (e) { savedUser = null; }
         this._custom = (savedUser && typeof savedUser === 'object') ? savedUser : {};
         if (Array.isArray(this._custom.sessionGoals)) this._sessionGoals = this._custom.sessionGoals.slice();
+        Briefing.resetForUser(uid, profileObj);
+      } else if (uid && !Briefing._ownerUserId) {
+        Briefing._ownerUserId = uid;
       }
       return this.set(Object.assign({}, profileObj || {}, uid ? { id: uid } : {}));
     },
@@ -2311,8 +2394,10 @@
         this._activeUserId = incomingId;
         this._sessionGoals = [];
         this._custom = {};
+        Briefing.resetForUser(incomingId, p);
       } else if (incomingId) {
         this._activeUserId = incomingId;
+        if (!Briefing._ownerUserId) Briefing._ownerUserId = incomingId;
       }
       const prevGoals = (!switchingUser && this._custom && Array.isArray(this._custom.goals)) ? this._custom.goals : [];
       const nextGoals = uniq([].concat(prevGoals, Array.isArray(p.goals) ? p.goals : [], p.goal ? [p.goal] : []));
@@ -2342,8 +2427,8 @@
       sigs.forEach(function (s) { if (s.sku && metrics.indexOf(s.sku) < 0) metrics.push(s.sku); });
       const visits = (Memory.has() && Memory.d && Memory.d.visits) ? Memory.d.visits : 1;
       const tierVal = clean(c.tier || c.memberTier || '');
-      const extraDetails = {};
-      ['age', 'gender', 'role', 'persona', 'lifestylePersona', 'dataCompleteness', 'readiness', 'metrics', 'trainingPlan', 'nutrition', 'flags', 'biomarkers', 'bloodwork', 'organHealth', 'biologicalAge', 'biohackingProtocols', 'loyaltyPoints', 'summary', 'workCalendar', 'trips'].forEach(function (k) {
+      const extraDetails = (c.details && typeof c.details === 'object') ? Object.assign({}, c.details) : {};
+      ['age', 'gender', 'role', 'persona', 'lifestylePersona', 'dataCompleteness', 'readiness', 'metrics', 'trainingPlan', 'nutrition', 'flags', 'biomarkers', 'bloodwork', 'organHealth', 'biologicalAge', 'biohackingProtocols', 'loyaltyPoints', 'summary', 'workCalendar', 'trips', 'activeRegimen', 'regimen', 'supplements', 'appointments', 'calendar', 'toTake', 'toBuy'].forEach(function (k) {
         if (c[k] !== undefined) extraDetails[k] = c[k];
       });
       return {
@@ -2483,6 +2568,11 @@
       this.updateViewport();
     },
 
+    findBlockingDialog: function () {
+      return qsa('dialog[open], [role="dialog"], [aria-modal="true"]').find(function (d) { return !d.closest(SKIP_SEL) && isVisible(d); }) ||
+        qsa('form input[type="password"]').map(function (inp) { return inp.closest('.fixed, [data-modal], dialog, [role="dialog"], form'); }).find(function (d) { return d && !d.closest(SKIP_SEL) && isVisible(d); }) || null;
+    },
+
     updateViewport: function () {
       if (!this.enabled()) return;
       const vh = window.innerHeight || document.documentElement.clientHeight || 700;
@@ -2491,12 +2581,21 @@
       this.scrollDepthPct = pct;
       if (pct > this.maxScrollDepthPct) this.maxScrollDepthPct = pct;
 
-      // detect open modal / dialog
+      // detect open modal / dialog (including auth/login forms and consent dialogs) and auto-yield asleep Glass stage so host dialogs are never obstructed
       let modalTitle = '';
-      const dlg = qsa('dialog[open], [role="dialog"], [aria-modal="true"]').find(function (d) { return !d.closest(SKIP_SEL) && isVisible(d); });
+      const dlg = this.findBlockingDialog();
       if (dlg) {
-        const mh = dlg.querySelector('h1,h2,h3,h4,[data-modal-title]');
+        const mh = dlg.querySelector('h1,h2,h3,h4,[data-modal-title]') || (dlg.parentElement && dlg.parentElement.querySelector('h1,h2,h3,h4'));
         modalTitle = mh ? short(clean(mh.textContent), 60) : (dlg.getAttribute('aria-label') || 'Dialog');
+        if (CONFIG.mode === 'glass' && typeof UI !== 'undefined' && UI.open && typeof VL !== 'undefined' && !VL.woke) {
+          VL._yieldedToModal = true;
+          UI.setOpen(false, true);
+        }
+      } else if (typeof VL !== 'undefined' && VL._yieldedToModal) {
+        VL._yieldedToModal = false;
+        if (CONFIG.mode === 'glass' && VL.mode === 'on' && !store.sget(KEYS.gdismiss)) {
+          UI.setOpen(true, true);
+        }
       }
       this.activeModal = modalTitle;
 
@@ -3084,11 +3183,11 @@
       const body = JSON.stringify(ev);
       try {
         if (navigator.sendBeacon) {
-          const blob = new Blob([body], { type: 'application/json' });
+          const blob = new Blob([body], { type: 'text/plain;charset=UTF-8' });
           if (navigator.sendBeacon(url, blob)) return;
         }
       } catch (e) {}
-      fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body, keepalive: true, credentials: 'same-origin' }).catch(function () {});
+      fetch(url, { method: 'POST', headers: { 'content-type': 'text/plain;charset=UTF-8' }, body: body, keepalive: true, mode: 'cors', credentials: 'omit' }).catch(function () {});
     }
   };
 
@@ -4268,6 +4367,7 @@
       const sameDoc = !hash && l.el.href && l.el.href.split('#')[0] === location.href.split('#')[0] && !(l.el.hash);
       cands.push({
         label: l.text, aliases: l.aliases || [l.text], kind: tgt ? 'section' : 'page', el: tgt || l.el, link: l.el, key: tgt || ('url:' + l.el.href.replace(/#.*$/, '')),
+        nav: !!l.nav,
         bonus: (l.nav ? 0.03 : -0.02) + (sameDoc ? -0.05 : 0)
       });
     });
@@ -4282,7 +4382,8 @@
         el: b.el,
         link: b.el,
         key: b.el,
-        bonus: b.nav ? -0.01 : -0.04
+        nav: !!b.nav,
+        bonus: b.nav ? 0.03 : -0.04
       });
     });
     return cands.filter(function (c) { return c.el && c.el.isConnected && (c.kind === 'page' ? true : isVisible(c.el) || isVisible(c.el.firstElementChild || c.el)); });
@@ -4385,7 +4486,8 @@
         (m = tn.match(/^(?:esta|estan|tienen|tienes|hay)\s+(.+?)\s+(?:en stock|disponibles?|en inventario)$/)) ||
         (m = tn.match(/^(?:esta|estan)\s+(?:disponibles?|en stock)\s+(?:el |la |los |las )?(.+)$/)))
       return { type: 'inv', act: 'stock', arg: m[1].replace(/^(the|a|an|el|la|los|las)\s+/, ''), raw: raw };
-    if ((m = tn.match(/^(?:how much (?:is|are|does|do)|what (?:is|are) the price of|whats the price of|what does|price of|cost of)\s+(.+?)(?:\s+cost)?$/)) ||
+    if ((m = tn.match(/^(?:how much (?:is|are|does|do)|what (?:is|are) the price of|whats the price of|price of|cost of)\s+(.+?)(?:\s+cost)?$/)) ||
+        (m = tn.match(/^what (?:does|do)\s+(.+?)\s+cost$/)) ||
         (m = tn.match(/^(?:cuanto (?:cuesta|cuestan|vale|valen)|cual es el precio de|precio de|que cuesta|que vale)\s+(?:el |la |los |las )?(.+)$/)))
       return { type: 'inv', act: 'price', arg: m[1].replace(/^(the|a|an|el|la|los|las)\s+/, ''), raw: raw };
 
@@ -4738,6 +4840,24 @@
         list.push({ q: q, a: a, el: null, page: '', url: '', id: '', owner: true, source: src || (LANG === 'es' ? 'tu perfil y datos del sitio' : 'your profile & live site data'), kw: clean(kw || '') });
       };
       try {
+        const sm = Scanner.map || Scanner.scan();
+        const siteName = clean((sm.title || '').split(/\s[|\u2013\u2014:-]\s/)[0]) || clean(sm.title || '');
+        const h2List = uniq((sm.headings || []).filter(function (h) { return h.level <= 3; }).map(function (h) { return h.text; })).slice(0, 8);
+        const catItems = Inventory.items().slice(0, 6).map(function (p) { return p.name + (p.price ? ' (' + p.price + ')' : ''); });
+        const siteOverviewParts = [];
+        if (sm.title) siteOverviewParts.push(sm.title + (sm.description ? ' — ' + sm.description : ''));
+        if (h2List.length) siteOverviewParts.push((LANG === 'es' ? 'Secciones y servicios en este sitio: ' : 'Sections & services on this site: ') + h2List.join(', '));
+        if (catItems.length) siteOverviewParts.push((LANG === 'es' ? 'Catálogo y servicios destacados: ' : 'Featured offerings & catalog: ') + catItems.join(', '));
+        if (siteOverviewParts.length) {
+          add(
+            (siteName ? siteName + ' — ' : '') + 'Site Overview, Services & Platform Capabilities',
+            siteOverviewParts.join('. ') + '.',
+            (norm(siteName) + ' services offer ofrece servicios platform company business features capabilities what does do overview about'),
+            LANG === 'es' ? 'el resumen del sitio' : 'this site’s overview'
+          );
+        }
+      } catch (e) {}
+      try {
         const pr = Profile.get();
         const det = (pr && pr.details) || {};
         if (pr && (pr.name || pr.goals.length || Object.keys(det).length)) {
@@ -4749,26 +4869,42 @@
           if (pr.goals && pr.goals.length) summaryParts.push('Goals: ' + pr.goals.join(', '));
           if (det.summary) summaryParts.push(det.summary);
           if (summaryParts.length) {
-            add('User Profile & Account Identity', summaryParts.join('. ') + '.', 'who am i profile account persona age gender loyalty points tier member', 'your active profile');
+            add('User Profile & Account Identity', summaryParts.join('. ') + '.', 'who am i profile account persona age gender loyalty points tier member perfil quien soy', 'your active profile');
           }
         }
         if (det.readiness && typeof det.readiness === 'object') {
-          add('Readiness Score & Recovery Status', 'Your readiness score is ' + det.readiness.score + '/100 (' + (det.readiness.status || 'monitored') + '). ' + (det.readiness.message || ''), 'readiness score recovery status how am i doing today', 'your readiness telemetry');
+          add('Readiness Score & Recovery Status', 'Your readiness score is ' + det.readiness.score + '/100 (' + (det.readiness.status || 'monitored') + '). ' + (det.readiness.message || ''), 'readiness score recovery status how am i doing today recuperacion estado', 'your readiness telemetry');
         }
         if (det.metrics && typeof det.metrics === 'object') {
           const m = det.metrics;
           const mParts = [];
-          if (m.sleep) mParts.push('Sleep: ' + (m.sleep.current != null ? m.sleep.current : m.sleep) + ' hours');
-          if (m.hrv) mParts.push('HRV: ' + (m.hrv.current != null ? m.hrv.current : m.hrv) + ' ms');
-          if (m.rhr) mParts.push('Resting heart rate (RHR): ' + (m.rhr.current != null ? m.rhr.current : m.rhr) + ' bpm');
-          if (m.trainingLoad != null) mParts.push('Training load: ' + m.trainingLoad);
+          const sleepVal = m.sleep ? (m.sleep.current != null ? m.sleep.current : m.sleep) : null;
+          const hrvVal = m.hrv ? (m.hrv.current != null ? m.hrv.current : m.hrv) : null;
+          const rhrVal = m.rhr ? (m.rhr.current != null ? m.rhr.current : m.rhr) : null;
+          const tLoadVal = m.trainingLoad != null ? (typeof m.trainingLoad === 'object' ? (m.trainingLoad.current != null ? m.trainingLoad.current : m.trainingLoad.value) : m.trainingLoad) : null;
+          if (LANG === 'es') {
+            if (sleepVal != null) mParts.push('Dormiste ' + sleepVal + ' horas anoche (Sueño: ' + sleepVal + 'h)');
+            if (hrvVal != null) mParts.push('HRV: ' + hrvVal + ' ms');
+            if (rhrVal != null) mParts.push('Frecuencia cardíaca en reposo (RHR): ' + rhrVal + ' bpm');
+            if (tLoadVal != null) mParts.push('Carga de entrenamiento: ' + tLoadVal);
+          } else {
+            if (sleepVal != null) mParts.push('Sleep: ' + sleepVal + ' hours');
+            if (hrvVal != null) mParts.push('HRV: ' + hrvVal + ' ms');
+            if (rhrVal != null) mParts.push('Resting heart rate (RHR): ' + rhrVal + ' bpm');
+            if (tLoadVal != null) mParts.push('Training load: ' + tLoadVal);
+          }
           if (mParts.length) {
-            add('Sleep, HRV, Resting Heart Rate & Vitals', mParts.join('. ') + '.', 'sleep hours hrv heart rate variability rhr resting heart rate vitals metrics', 'your wearable telemetry');
+            add(
+              'Sleep, HRV, Resting Heart Rate & Vitals (Sueño y Biométricos)',
+              mParts.join('. ') + '.',
+              'sleep slept hours last night hrv heart rate variability rhr resting heart rate vitals metrics dormi dormiste sueno horas anoche frecuencia cardiaca reposo',
+              LANG === 'es' ? 'tu telemetría de sueño y biométricos' : 'your wearable telemetry'
+            );
           }
         }
         if (det.trainingPlan && typeof det.trainingPlan === 'object') {
           const tp = det.trainingPlan;
-          add('Today Training Plan & Workout Protocol', 'Today’s training plan is ' + (tp.type || 'scheduled workout') + (tp.duration ? ' (' + tp.duration + ' min, ' + (tp.intensity || '') + ')' : '') + '. ' + (tp.reason || ''), 'workout training plan exercise ride zone 2 intervals session', 'your training plan');
+          add('Today Training Plan & Workout Protocol', 'Today’s training plan is ' + (tp.type || 'scheduled workout') + (tp.duration ? ' (' + tp.duration + ' min, ' + (tp.intensity || '') + ')' : '') + '. ' + (tp.reason || ''), 'workout training plan exercise ride zone 2 intervals session entrenamiento ejercicio', 'your training plan');
         }
         if (det.nutrition && typeof det.nutrition === 'object') {
           const nu = det.nutrition;
@@ -4779,17 +4915,17 @@
           if (nu.fat) nParts.push('Fat: ' + nu.fat.current + ' / ' + nu.fat.target + 'g');
           if (nu.hydration) nParts.push('Hydration: ' + nu.hydration.current + ' / ' + nu.hydration.target + ' mL');
           if (nParts.length) {
-            add('Nutrition, Macros, Protein, Calories & Hydration', nParts.join(', ') + '.', 'nutrition macros calories protein carbs fat hydration water diet', 'your nutrition tracker');
+            add('Nutrition, Macros, Protein, Calories & Hydration', nParts.join(', ') + '.', 'nutrition macros calories protein carbs fat hydration water diet nutricion calorias proteina agua', 'your nutrition tracker');
           }
         }
         if (Array.isArray(det.flags) && det.flags.length) {
-          add('Active Clinical Flags & Alerts', 'Active monitored flags on your profile: ' + det.flags.join('; ') + '.', 'flags alerts warnings soreness knee sleep debt travel', 'your profile flags');
+          add('Active Clinical Flags & Alerts', 'Active monitored flags on your profile: ' + det.flags.join('; ') + '.', 'flags alerts warnings soreness knee sleep debt travel alertas', 'your profile flags');
         }
         if (det.organHealth || det.biologicalAge) {
-          add('Biological Age & Organ Longevity (AOSM)', typeof det.organHealth === 'string' ? det.organHealth : JSON.stringify(det.organHealth || det.biologicalAge), 'biological age chronological age organ longevity aosm heart brain metabolic liver pace of aging', 'Organ Longevity Modeling');
+          add('Biological Age & Organ Longevity (AOSM)', typeof det.organHealth === 'string' ? det.organHealth : JSON.stringify(det.organHealth || det.biologicalAge), 'biological age chronological age organ longevity aosm heart brain metabolic liver pace of aging edad biologica', 'Organ Longevity Modeling');
         }
         if (det.biomarkers || det.bloodwork) {
-          add('Lab Results, Bloodwork & Biomarkers', typeof det.biomarkers === 'string' ? det.biomarkers : JSON.stringify(det.biomarkers || det.bloodwork), 'labs bloodwork biomarkers apob hscrp glucose hba1c vitamin d testosterone cortisol dexa vo2max', 'your lab telemetry');
+          add('Lab Results, Bloodwork & Biomarkers', typeof det.biomarkers === 'string' ? det.biomarkers : JSON.stringify(det.biomarkers || det.bloodwork), 'labs bloodwork biomarkers apob hscrp glucose hba1c vitamin d testosterone cortisol dexa vo2max laboratorio biomarcadores', 'your lab telemetry');
         }
         if (Array.isArray(det.biohackingProtocols) && det.biohackingProtocols.length) {
           const bpTxt = det.biohackingProtocols.slice(0, 5).map(function (b) { return (b.title || b.name) + (b.protocol ? ': ' + b.protocol : ''); }).join('. ');
@@ -5052,7 +5188,16 @@
     /* ---------- proactive hint (silent, once per session, dismissible) ---------- */
     afterReveal: function () {
       const self = this;
-      if (CONFIG.mode === 'glass' && this.mode === 'on' && CONFIG.glass.autoOpen !== false && !store.sget(KEYS.gdismiss)) { UI.setOpen(true, true); UI.setAwake(false); this.refresh(); }   // asleep: no mic, no speech until the visitor taps
+      if (CONFIG.mode === 'glass' && this.mode === 'on' && CONFIG.glass.autoOpen !== false && !store.sget(KEYS.gdismiss)) {
+        if (!this.woke && Behavior.findBlockingDialog()) {
+          this._yieldedToModal = true;
+          UI.setOpen(false, true);
+        } else {
+          UI.setOpen(true, true);
+        }
+        UI.setAwake(false);
+        this.refresh();
+      }   // asleep: no mic, no speech until the visitor taps
       if (CONFIG.mode !== 'glass' && this.mode === 'on' && CONFIG.bubble && !store.sget(KEYS.bubble)) {
         this._bubbleT = setTimeout(function () { self.maybeBubble(); }, CONFIG.bubbleDelayMs);
       }
@@ -5087,6 +5232,7 @@
     /* ---------- language ---------- */
     changeLanguage: async function (code, persist) {
       if (!PACKS[code] || code === LANG) return;
+      this._langChangedExplicitly = true;
       const wasListening = Voice.isListening();
       this.stop(false);
       setLang(code, null, persist);
@@ -5104,7 +5250,14 @@
     open: function (listen) {
       if (this.mode !== 'on') { store.set(KEYS.off, null); store.set(KEYS.min, null); this.applyMode('on'); }
       if (CONFIG.mode === 'glass') {                              // glass opens asleep: the circle tap is the only thing that wakes it
-        UI.setOpen(true); UI.setAwake(this.woke); store.sset(KEYS.gdismiss, null); this.checkRemote(); this.refresh(); this.glassEvent('open'); return;
+        if (!this.woke && Behavior.findBlockingDialog()) {
+          this._yieldedToModal = true;
+          UI.setOpen(false, true);
+        } else {
+          this._yieldedToModal = false;
+          UI.setOpen(true);
+        }
+        UI.setAwake(this.woke); store.sset(KEYS.gdismiss, null); this.checkRemote(); this.refresh(); this.glassEvent('open'); return;
       }
       UI.setOpen(true);
       this.checkRemote();
@@ -5178,6 +5331,10 @@
     },
     onVoiceError: function (code) {
       UI.setMicUI(false, code !== 'unsupported');
+      if (code === 'idle-timeout' && (this.busy || (this.lastRunAt && Date.now() - this.lastRunAt < 6000))) {
+        this.refresh();
+        return;
+      }
       this.say(M.err(code, SPEECH_LANG), { silent: code !== 'idle-timeout' && code !== 'not-allowed' ? false : true });
       this.refresh();
     },
@@ -5245,10 +5402,31 @@
     run: async function (text) {
       const tok = ++this.token;
       const alive = function () { return tok === VL.token; };
+      this.lastRunAt = Date.now();
+      if (Voice._bumpIdle && Voice.isListening()) Voice._bumpIdle();
+      if (this._yieldedToModal) {
+        this._yieldedToModal = false;
+        if (CONFIG.mode === 'glass' && !UI.open && this.mode === 'on') UI.setOpen(true, true);
+      }
+      const prevLang = LANG;
+      this._langChangedExplicitly = false;
+      const rawLower = String(text || '').toLowerCase();
+      const t = norm(text);
+      const isFrench = /[çœ]|\b(combien|coute|panier|ajouter|qu'est|est-ce)\b/.test(rawLower);
+      const isSpanishUtterance = !isFrench && !I.cp.cmdLang.test(t) && (
+        /[¿¡ñáéíóú]/.test(rawLower) ||
+        /\b(que|como|cual|cuales|cuanto|cuantos|donde|cuando|quien|tengo|pendiente|clima|tiempo|calendario|agenda|carrito|dormi|dormiste|sueno|resumen|hoy|anoche|manana|mis|mio|estoy|estas|puedes|quiero|necesito|anade|agrega|agregar|comprar|tomar|suplementos|citas|reuniones|entrenamiento|precio|cuesta|disponible|agotado|buscar|encuentra|llevame|muestrame|abajo|arriba|ayuda|hola|buenos|buenas|gracias)\b/.test(t)
+      );
+      const isEnglishUtterance = !isFrench && !I.cp.cmdLang.test(t) && !/[¿¡ñáéíóú]/.test(rawLower) && (
+        /\b(what|how|where|when|who|which|do|does|did|is|are|was|were|have|has|my|your|today|tonight|yesterday|weather|calendar|schedule|cart|sleep|slept|summary|briefing|add|buy|click|scroll|show|take|go)\b/.test(t)
+      );
+      if (isSpanishUtterance && LANG !== 'es' && PACKS.es) setLang('es', null, false);
+      else if (isEnglishUtterance && !isSpanishUtterance && LANG !== 'en' && PACKS.en) setLang('en', null, false);
+
       this.setBusy(true);
       try {
         let intent, viaPending = false;
-        const pend = this.pending, t = norm(text);
+        const pend = this.pending;
         if (I.cp.crisisRe.test(t)) { await Companion.crisis(); return; }     // safety first: in EVERY mode, before any AI/knowledge routing
         if (pend && performance.now() < pend.until) {
           const r = this.resolvePending(pend, t);
@@ -5290,11 +5468,11 @@
           if (Companion.engaged() && await Companion.intercept(text, intent, tok, alive)) return;
         }
         if (!viaPending && intent.type === 'unknown' && typeof CONFIG.aiAnswer === 'function') {
-          if (await this.aiAnswerFlow(text, alive)) return;
+          if (await this.aiAnswerFlow(text, alive, false)) return;
         }
         if (!viaPending && Knowledge.enabled() && await this.knowledge(text, intent, tok, alive)) return;
         if (intent.type === 'unknown' && (CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true || CONFIG.apiBase)) {
-          if (await this.aiAnswerFlow(text, alive)) return;
+          if (await this.aiAnswerFlow(text, alive, true)) return;
         }
         if (!Scanner.map || Date.now() - Scanner.map.scannedAt > 1500) Scanner.scan();
         await this.exec(intent, tok, alive);
@@ -5302,6 +5480,8 @@
         console.error('[VoiceLayer]', e);
         if (alive()) await this.say(M.error);
       } finally {
+        this.lastRunAt = Date.now();
+        if (!this._langChangedExplicitly && LANG !== prevLang) setLang(prevLang, null, false);
         if (alive()) this.setBusy(false);
       }
     },
@@ -5477,7 +5657,8 @@
     },
 
     /** host-supplied or built-in server brain (CONFIG.aiAnswer) with rich spatial/inventory/profile context + automatic server fallback */
-    aiAnswerFlow: async function (text, alive) {
+    aiAnswerFlow: async function (text, alive, allowServer) {
+      if (allowServer === undefined) allowServer = true;
       let reply = null, action = null;
       const ctx = this.contextSnapshot();
       const applyResult = function (r) {
@@ -5497,7 +5678,7 @@
           ]);
           applyResult(r1);
         }
-        if ((!reply || !String(reply).trim()) && CONFIG.apiBase && (CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true || typeof CONFIG.aiAnswer === 'function')) {
+        if (allowServer && (!reply || !String(reply).trim()) && CONFIG.apiBase && (CONFIG.aiAnswer === 'server' || CONFIG.aiAnswer === true || typeof CONFIG.aiAnswer === 'function')) {
           const r2 = await Promise.race([
             Promise.resolve().then(function () { return Net.ask(text, LANG, ctx); }),
             new Promise(function (res) { setTimeout(function () { res(null); }, 10000); })
@@ -5725,9 +5906,12 @@
 
     cmdGo: async function (it, tok, alive) {
       const q = it.arg;
+      const nq = norm(q);
       const cands = goCandidates();
       const scoreCand = function (c) {
-        let best = score(q, c.label);
+        let primaryScore = score(q, c.label);
+        if (nq && norm(c.label) === nq) primaryScore += 0.04;
+        let best = primaryScore;
         if (Array.isArray(c.aliases)) c.aliases.forEach(function (al) { best = Math.max(best, score(q, al)); });
         return best;
       };
@@ -5764,7 +5948,12 @@
       }
       const top = hits[0];
       const close = hits.filter(function (h) { return h.score >= top.score - 0.1; });
-      const clear = close.length === 1 || (top.score >= 0.96 && close.filter(function (h) { return h.score >= 0.96; }).length === 1);
+      const navClose = close.filter(function (h) { return h.item && h.item.nav; });
+      const exactClose = close.filter(function (h) { return h.item && norm(h.item.label) === nq; });
+      const clear = close.length === 1 ||
+        exactClose.length === 1 ||
+        (top.score >= 0.96 && close.filter(function (h) { return h.score >= 0.96; }).length === 1) ||
+        (top.item && top.item.nav && top.score >= 0.88 && navClose.length === 1);
       if (!clear) {
         const opts = close.slice(0, 4).map(function (h) {
           return { label: h.item.label + (h.item.kind === 'page' ? M.anotherPage : ''), pick: h.item.label, el: h.item.el.isConnected ? h.item.el : h.item.link,
@@ -5886,15 +6075,21 @@
         if (!proceed || !alive()) { UI.clearRings(); this.say(M.stoppedBefore); return; }
         if (!c.el.isConnected || !isVisible(c.el) || isDisabled(c.el)) { UI.clearRings(); return this.say(M.pageChanged(label)); }
 
-        // ---- read-back baseline ----
-        const cartEl = document.querySelector(CONFIG.cartCountSelector);
-        const isCartAction = !!cartEl && CART_WORDS.test(norm(c.text + ' ' + (c.el.getAttribute('aria-label') || '')));
-        const readCart = function () { const e = document.querySelector(CONFIG.cartCountSelector); if (!e) return null; const n = parseInt((e.textContent || '').replace(/[^\d-]/g, ''), 10); return isNaN(n) ? null : n; };
-        const before = isCartAction ? readCart() : null;
+        // ---- read-back baseline (supports #cart-count, VoiceLayer.setCart, Symbiosis cart, or navbar Cart (N) button) ----
+        const readCart = function () {
+          const e = document.querySelector(CONFIG.cartCountSelector);
+          if (e) { const n = parseInt((e.textContent || '').replace(/[^\d-]/g, ''), 10); if (!isNaN(n)) return n; }
+          const cObj = Inventory.cart();
+          return (cObj && cObj.count != null && !isNaN(Number(cObj.count))) ? Number(cObj.count) : null;
+        };
+        const initialCart = readCart();
+        const isCartAction = (initialCart !== null) && CART_WORDS.test(norm(c.text + ' ' + (c.el.getAttribute('aria-label') || '')));
+        const before = isCartAction ? initialCart : null;
         let mutations = 0; const url0 = location.href;
         const mo = new MutationObserver(function (ms) { ms.forEach(function (m) { if (!(m.target.closest && m.target.closest(SKIP_SEL))) mutations++; }); });
         mo.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
 
+        const clickTs = Date.now();
         const qty = clamp(Number(o.qty) || 1, 1, 10);
         const href = c.el.tagName === 'A' ? c.el.href : '';
         if (href && !/^#/.test(c.el.getAttribute('href') || '')) this.markNavigating();
@@ -5925,7 +6120,19 @@
 
         if (isCartAction && before != null && after != null) {
           if (after > before) {
-            Demand.record({ type: 'cart_add', product: c.ctx || label, qty: after - before });
+            const addedDelta = after - before;
+            const prodName = clean(c.ctx || '');
+            if (Inventory._cartOverride && prodName && (!Inventory._cartOverride.updatedAt || Inventory._cartOverride.updatedAt < clickTs)) {
+              Inventory._cartOverride.count = after;
+              const dc = Inventory.domCart();
+              if (dc && dc.total) Inventory._cartOverride.total = dc.total;
+              const nextItems = Array.isArray(Inventory._cartOverride.items) ? Inventory._cartOverride.items.map(function (x) { return Object.assign({}, x); }) : [];
+              const existingItem = nextItems.find(function (x) { return x && norm(x.name || x.id || '') === norm(prodName); });
+              if (existingItem) existingItem.qty = (Number(existingItem.qty) || 1) + addedDelta;
+              else nextItems.push({ name: prodName, qty: addedDelta });
+              Inventory._cartOverride.items = nextItems;
+            }
+            Demand.record({ type: 'cart_add', product: c.ctx || label, qty: addedDelta });
             this.receipt({ action: 'click', label: label, status: 'succeeded', verification: 'read_back', before: before, after: after, qty: qty });
             return this.say(M.doneCart(label, before, after), { verified: true });
           }
@@ -6050,6 +6257,13 @@
         case 'price': {
           let p = it.arg ? Inventory.find(it.arg) : Behavior.deicticProduct();
           if (!p) {
+            if (Knowledge.enabled() && (it.raw || it.arg)) {
+              const kRes = await Knowledge.ask(it.raw || it.arg);
+              if (!alive()) return;
+              if (kRes && kRes.found && kRes.score >= 0.45) {
+                if (await this.knowledge(it.raw || it.arg, { type: 'unknown', raw: it.raw || it.arg }, tok, alive)) return;
+              }
+            }
             Demand.record({ type: 'unmatched_product', query: it.arg || '' });
             const avail = andList(all.slice(0, 5).map(function (x) { return x.name; }));
             return this.say(S.noMatch(it.arg || (LANG === 'es' ? 'esto' : 'this item'), avail));
@@ -6629,6 +6843,7 @@
     get engine() { return Voice.engine; },
     getSiteMap: function () { return Scanner.json(); },
     rescan: function () { Scanner.scan(); return Scanner.json(); },
+    scan: function () { Scanner.scan(); return Scanner.json(); },
     get receipts() { return VL.receipts.slice(); },
     get state() { return VL.state; },
     /** debug helpers (CONFIG.debug) — force any visual state without a mic */
