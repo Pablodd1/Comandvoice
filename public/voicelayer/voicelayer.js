@@ -47,7 +47,7 @@
     showLangSwitch: true,
     greeting: '',                        // '' = built-in greeting per language; or a string; or { en: '…', es: '…' }
     speakGreeting: false,                // speak the greeting aloud on first open? (captions always show it)
-    orbPosition: { corner: 'bottom-right', offsetX: 24, offsetY: 24 }, // corner: bottom-right | bottom-left | top-right | top-left
+    orbPosition: { corner: 'bottom-right', offsetX: 24, offsetY: 24 }, // corner: bottom-right | bottom-left | top-right | top-left | center (offsets ignored) — size: orb diameter px (default 60)
     rememberPosition: true,              // remember where the visitor dragged the orb (localStorage)
     listenOnOpen: true,                  // tapping the orb opens the panel AND starts the mic (that tap is the consent gesture). false = open only
     resumeAfterNavigation: true,         // after the assistant navigates, re-open the panel (mic stays OFF)
@@ -56,11 +56,11 @@
     mode: 'assistant',                   // 'assistant' (orb + panel, answers when asked) | 'glass' (full-page glass, speaks first after ONE tap)
     glass: {
       autoOpen: true,                    // show the glass (in its "tap to start" state) on load. It never listens or speaks before that tap.
-      blur: 14,                          // px of backdrop blur (0 = clear glass)
-      tint: 0.22,                        // 0..0.6 darkness of the glass
-      hue: 215,                          // accent hue 0..360 (blue family by default)
-      dock: 'full',                      // 'full' (cover the page) | 'top' (glass band pinned to the TOP of the page; the site below stays visible and usable)
-      height: 0.42,                      // dock:'top' only — band height as a fraction of the viewport (clamped 0.25..0.6)
+      blur: 4,                           // px of backdrop blur (0 = clear glass)
+      tint: 0.15,                        // 0..0.6 darkness of the glass (15% tint)
+      hue: 150,                          // accent hue 0..360
+      dock: 'top',                       // 'full' (cover the page) | 'top' (compact floating glass pill at the TOP of the page)
+      height: 0.18,                      // dock:'top' only — band height as a fraction of the viewport (clamped 0.10..0.6)
       lite: 'auto',                      // 'auto' | true | false  - cheaper rendering on weak devices
       visual: 'line',                    // 'line' (orb + travelling dash-wave under it) | 'radial' (bars around the orb) | 'both'
       flow: 'out',                       // line only: 'out' = voice travels from the centre to both ends | 'right' = travels left to right
@@ -175,7 +175,7 @@
   // opened from disk (file://) a relative API path can't work: use browser voice, make no network calls
   if (location.protocol === 'file:' && !/^https?:/i.test(CONFIG.apiBase)) CONFIG.apiBase = '';
 
-  const VERSION = '0.7.0';
+  const VERSION = '0.7.1';
   const STATES = ['idle', 'listening', 'thinking', 'speaking'];
   const log = function () { if (CONFIG.debug) console.log.apply(console, ['[VoiceLayer]'].concat([].slice.call(arguments))); };
 
@@ -1268,10 +1268,10 @@
       const P = I.cp, cfg = this.cfg;
       await this.load();
       await Briefing.ensureWeather();
-      if (!alive()) return;
-      const name = this.data.name || Profile.get().name || Memory.name() || cfg.name || '';
+      const rawName = this.data.name || (Profile.get && Profile.get().name) || Memory.name() || cfg.name || '';
+      const name = rawName ? rawName.split(' ')[0] : '';
       UI.setDemo(!!(cfg.demo || this.data.demo));
-      if (this.greeted || store.sget(KEYS.cdone)) {
+      if (this.greeted || store.sget(KEYS.cdone) || name) {
         this.greeted = true; this.stage = 'insights'; this.emit('welcome_back');
         const bLine = Briefing.summaryLine();
         return VL.say(P.back(name) + (bLine ? ' ' + bLine : ''));
@@ -2123,7 +2123,7 @@
         userRegimen.forEach(function (r) {
           if (!r || r.takenToday === true || r.taken === true) return;
           const nm = clean(loc(r.name || r.label || ''));
-          const ds = clean(r.dose || r.dosage || '');
+          const ds = clean(r.dose || r.dosage || r.dailyDosage || '');
           const lbl = nm + (ds && nm.indexOf(ds) < 0 ? ' ' + ds : '');
           add(lbl, clean(r.timing || r.time || ''));
         });
@@ -2146,7 +2146,13 @@
       const out = [];
       const add = function (lbl) {
         lbl = clean(lbl); if (!lbl) return;
-        if (!out.some(function (x) { return norm(x.label) === norm(lbl); })) out.push({ label: lbl, text: lbl });
+        const baseNorm = norm(lbl).replace(/\s*\(\d+\s*(days left|días restantes|left|days)\)/gi, '').trim();
+        if (!out.some(function (x) {
+          const xBase = norm(x.label).replace(/\s*\(\d+\s*(days left|días restantes|left|days)\)/gi, '').trim();
+          return xBase === baseNorm;
+        })) {
+          out.push({ label: lbl, text: lbl });
+        }
       };
       const det = (typeof Profile !== 'undefined' && Profile.get && Profile.get().details) || {};
       const userRegimen = Array.isArray(det.activeRegimen) ? det.activeRegimen : (Array.isArray(det.regimen) ? det.regimen : null);
@@ -2988,12 +2994,12 @@
   RadialRenderer.prototype.resize = function () {
     const vw = document.documentElement.clientWidth || window.innerWidth, vh = window.innerHeight || 700;
     const isTop = CONFIG.mode === 'glass' && CONFIG.glass && CONFIG.glass.dock === 'top';
-    const bandH = isTop ? vh * clamp(Number(CONFIG.glass.height) || 0.42, 0.25, 0.6) : vh;
+    const bandH = isTop ? vh * clamp(Number(CONFIG.glass.height) || 0.18, 0.10, 0.6) : vh;
     this.R = isTop
-      ? clamp(Math.round(Math.min(vw * 0.08, bandH * 0.135)), 24, 52)
+      ? clamp(Math.round(Math.min(vw * 0.055, bandH * 0.15)), 18, 34)
       : clamp(Math.round(Math.min(vw * 0.19, vh * (vh < 560 ? 0.10 : 0.13))), 46, 120);
-    this.S = Math.round(this.R * (isTop ? 3.8 : 5));
-    this.W = this.visual === 'radial' ? this.S : Math.max(this.S, Math.round(Math.min(vw * (isTop ? 0.72 : 0.88), isTop ? 560 : 720)));
+    this.S = Math.round(this.R * (isTop ? 2.6 : 5));
+    this.W = this.visual === 'radial' ? this.S : Math.max(this.S, Math.round(Math.min(vw * (isTop ? 0.62 : 0.88), isTop ? 460 : 720)));
     this.dpr = this.lite ? 1 : Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.style.width = this.W + 'px'; this.canvas.style.height = this.S + 'px';
     this.canvas.width = Math.round(this.W * this.dpr); this.canvas.height = Math.round(this.S * this.dpr);
@@ -3657,7 +3663,7 @@
         root.style.setProperty('--vl-tint', String(clamp(Number(CONFIG.glass.tint) || 0, 0, 0.6)));
         root.setAttribute('data-pass', CONFIG.glass.passThrough === false ? 'false' : 'true');
         if (CONFIG.glass.dock === 'top') {
-          const frac = clamp(Number(CONFIG.glass.height) || 0.42, 0.25, 0.6);
+          const frac = clamp(Number(CONFIG.glass.height) || 0.18, 0.10, 0.6);
           root.setAttribute('data-dock', 'top');
           root.style.setProperty('--vl-dock-h', frac * 100 + 'vh');
           root.style.setProperty('--vl-dock-scale', String(frac));
@@ -3795,7 +3801,7 @@
         const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
         if (!drag.moved && Math.hypot(dx, dy) < 6) return;
         drag.moved = true;
-        const maxX = self.vw() - 60, maxY = self.vh() - 60;
+        const S = self.orbSizePx(), maxX = self.vw() - S, maxY = self.vh() - S;
         const x = clamp(drag.ox + dx, 0, maxX), y = clamp(drag.oy + dy, 0, maxY);
         self.pos = { fx: maxX > 0 ? x / maxX : 0, fy: maxY > 0 ? y / maxY : 0 };
         self.placeOrb(); if (self.open) self.positionPanel();
@@ -4048,42 +4054,50 @@
       this.note.textContent = eng === 'deepgram' ? this.T.privacyDeepgram : this.T.privacyBrowser;
     },
 
+    orbSizePx: function () { return Math.max(36, Number(CONFIG.orbPosition && CONFIG.orbPosition.size) || 60); },
     _cornerPos: function () {
       const o = CONFIG.orbPosition, c = String(o.corner || 'bottom-right');
-      const maxX = Math.max(1, this.vw() - 60), maxY = Math.max(1, this.vh() - 60);
+      if (/center/i.test(c)) { this.pos = { fx: 0.5, fy: 0.5 }; return; }
+      const S = this.orbSizePx();
+      const maxX = Math.max(1, this.vw() - S), maxY = Math.max(1, this.vh() - S);
       const x = /left/.test(c) ? o.offsetX : maxX - o.offsetX, y = /top/.test(c) ? o.offsetY : maxY - o.offsetY;
       this.pos = { fx: clamp(x / maxX, 0, 1), fy: clamp(y / maxY, 0, 1) };
     },
     orbXY: function () {
-      const maxX = Math.max(0, this.vw() - 60), maxY = Math.max(0, this.vh() - 60);
+      const S = this.orbSizePx();
+      const maxX = Math.max(0, this.vw() - S), maxY = Math.max(0, this.vh() - S);
       return { x: Math.round(this.pos.fx * maxX), y: Math.round(this.pos.fy * maxY) };
     },
     placeOrb: function () {
       if (!this.orb) return; const p = this.orbXY();
+      const S = this.orbSizePx();
+      this.orb.style.width = S + 'px'; this.orb.style.height = S + 'px';
+      const ic = this.orb.querySelector('svg');
+      if (ic) { const d = Math.round(S * 0.44) + 'px'; ic.style.width = d; ic.style.height = d; }
       this.orb.style.left = p.x + 'px'; this.orb.style.top = p.y + 'px';
       this.placeTab(); this.placeBubble();
     },
     placeTab: function () {
-      if (!this.tab) return; const p = this.orbXY(), left = (p.x + 30) < this.vw() / 2;
+      if (!this.tab) return; const p = this.orbXY(), left = (p.x + this.orbSizePx() / 2) < this.vw() / 2;
       this.tab.setAttribute('data-side', left ? 'left' : 'right');
       this.tab.style.top = clamp(p.y + 2, 8, Math.max(8, this.vh() - 64)) + 'px';
     },
     placeBubble: function () {
       if (!this.bubble || !this.bubble.classList.contains('show')) return;
-      const vw = this.vw(), vh = this.vh(), p = this.orbXY(), b = this.bubble;
+      const vw = this.vw(), vh = this.vh(), p = this.orbXY(), b = this.bubble, R = this.orbSizePx() / 2;
       b.style.maxWidth = Math.min(280, vw - 24) + 'px';
-      const bw = b.offsetWidth, bh = b.offsetHeight, rightHalf = (p.x + 30) > vw / 2;
-      let x = rightHalf ? p.x + 60 - bw : p.x; x = clamp(x, 8, Math.max(8, vw - bw - 8));
+      const bw = b.offsetWidth, bh = b.offsetHeight, rightHalf = (p.x + R) > vw / 2;
+      let x = rightHalf ? p.x + 2 * R - bw : p.x; x = clamp(x, 8, Math.max(8, vw - bw - 8));
       let y = p.y - bh - 12; if (y < 8) y = Math.min(vh - bh - 8, p.y + 72);
       b.style.left = x + 'px'; b.style.top = y + 'px';
       b.setAttribute('data-tail', rightHalf ? 'right' : 'left'); b.setAttribute('data-below', y > p.y ? 'true' : 'false');
     },
     positionPanel: function () {
       if (!this.panel || this.isMobile()) { if (this.panel) { this.panel.style.left = this.panel.style.top = this.panel.style.width = ''; } return; }
-      const vw = this.vw(), vh = this.vh(), p = this.orbXY();
+      const vw = this.vw(), vh = this.vh(), p = this.orbXY(), R = this.orbSizePx() / 2;
       const pw = Math.min(380, vw - 16); this.panel.style.width = pw + 'px';
       const ph = this.panel.offsetHeight;
-      let x = (p.x + 30) > vw / 2 ? p.x + 60 - pw : p.x; x = clamp(x, 8, Math.max(8, vw - pw - 8));
+      let x = (p.x + R) > vw / 2 ? p.x + 2 * R - pw : p.x; x = clamp(x, 8, Math.max(8, vw - pw - 8));
       let y = p.y - ph - 12, below = false;
       if (y < 8) { y = p.y + 72; below = true; }
       if (y + ph > vh - 8) y = Math.max(8, vh - ph - 8);
@@ -4436,7 +4450,7 @@
     tn = tn.replace(/\s+(please|thanks|thank you|por favor|gracias)$/, '').trim();
     let m;
     // ---- executive daily briefing: weather, primary calendar, work/training/travel calendar, pending to take, pending to buy ----
-    if (/^(give me (my |the |a )?(daily |morning |quick )?(briefing|update|summary|status)|daily briefing|morning briefing|my briefing|brief me|how is my day( looking)?|whats my status( today)?|what (is |do i have )?pending( today)?|whats pending( today)?|everything( that is)? pending|summary of everything( pending)?|dame (mi |el )?(resumen|informe|briefing)( del dia| diario)?|resumen del dia|como esta mi dia|estado del dia|que tengo pendiente( hoy)?|todo lo pendiente)$/.test(tn))
+    if (/^(give me (my |the |a )?(daily |morning |quick )?(briefing|update|summary|status)|daily briefing|morning briefing|my briefing|brief me|update|my update|summary|my summary|how is my day( looking)?|whats my status( today)?|what (is |do i have )?pending( today)?|whats pending( today)?|everything( that is)? pending|summary of everything( pending)?|dame (mi |el )?(resumen|informe|briefing)( del dia| diario)?|resumen del dia|como esta mi dia|estado del dia|resumen|mi resumen|que tengo pendiente( hoy)?|todo lo pendiente)$/.test(tn))
       return { type: 'briefing', act: 'all', raw: raw };
     if (/^(how is the (weather|day|temperature)|whats the (weather|temperature)( like)?( today)?|what is the (weather|temperature)( today)?|weather( today| report| forecast)?|temperature( today)?|is it (raining|sunny|dry|cold|hot|warm)( or (dry|raining|sunny))?( today| outside| right now)?|raining or dry|temp or raining|que (tiempo|clima) hace( hoy)?|como esta el (clima|tiempo|dia)( hoy)?|cual es la temperatura( hoy)?|esta (lloviendo|seco|soleado)( o (seco|lloviendo))?( hoy)?|llueve hoy|temperatura de hoy)$/.test(tn))
       return { type: 'briefing', act: 'weather', raw: raw };
@@ -5808,7 +5822,7 @@
       else if (act === 'work') text = Briefing.workCalendarText();
       else if (act === 'take') text = Briefing.toTakeText();
       else if (act === 'buy') text = Briefing.toBuyText();
-      else text = Briefing.fullText();
+      else text = Briefing.summaryLine() || Briefing.fullText();
       this.receipt({ action: 'briefing_' + act, label: act, status: 'succeeded', verification: 'read_back' });
       return this.say(text, { verified: true });
     },
