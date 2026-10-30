@@ -175,7 +175,7 @@
   // opened from disk (file://) a relative API path can't work: use browser voice, make no network calls
   if (location.protocol === 'file:' && !/^https?:/i.test(CONFIG.apiBase)) CONFIG.apiBase = '';
 
-  const VERSION = '0.7.1';
+  const VERSION = '0.7.2';
   const STATES = ['idle', 'listening', 'thinking', 'speaking'];
   const log = function () { if (CONFIG.debug) console.log.apply(console, ['[VoiceLayer]'].concat([].slice.call(arguments))); };
 
@@ -2995,8 +2995,9 @@
     const vw = document.documentElement.clientWidth || window.innerWidth, vh = window.innerHeight || 700;
     const isTop = CONFIG.mode === 'glass' && CONFIG.glass && CONFIG.glass.dock === 'top';
     const bandH = isTop ? vh * clamp(Number(CONFIG.glass.height) || 0.18, 0.10, 0.6) : vh;
+    const sizePx = Number(CONFIG.orbPosition && CONFIG.orbPosition.size) || 0;
     this.R = isTop
-      ? clamp(Math.round(Math.min(vw * 0.055, bandH * 0.15)), 18, 34)
+      ? clamp(sizePx ? Math.round(sizePx / 2) : Math.round(Math.min(vw * 0.055, bandH * 0.15)), 14, 34)
       : clamp(Math.round(Math.min(vw * 0.19, vh * (vh < 560 ? 0.10 : 0.13))), 46, 120);
     this.S = Math.round(this.R * (isTop ? 2.6 : 5));
     this.W = this.visual === 'radial' ? this.S : Math.max(this.S, Math.round(Math.min(vw * (isTop ? 0.62 : 0.88), isTop ? 460 : 720)));
