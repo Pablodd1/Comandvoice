@@ -357,29 +357,29 @@ button:focus-visible, input:focus-visible {
 .vl-root[data-ui="glass"][data-pass="false"] .vl-glass { pointer-events: auto; }          /* passThrough:false → the glass catches clicks */
 
 
-/* ---- DOCK: 'top' — the glass becomes a responsive band pinned to the top of the page.
-   Controls, captions, cards and input stay at native 1:1 readable scale across the full viewport width,
-   while the voice orb stage scales proportionally to the band height. ---- */
+/* ---- DOCK: 'top' — Version 1: compact floating top pill over the page so 95%+ of the site stays visible ---- */
 .vl-root[data-dock="top"] .vl-glass {
-  inset: 0 0 auto 0; height: auto; min-height: var(--vl-dock-h, 42vh); max-height: 84vh; overflow-x: hidden; overflow-y: auto;
-  box-shadow: inset 0 0 0 1px rgba(170,200,255,.22), inset 0 1px 0 rgba(255,255,255,.28), 0 18px 50px rgba(2,6,22,.45);
-  border-bottom: 1px solid rgba(170,200,255,.28);
+  inset: 10px auto auto 50%; transform: translateX(-50%); width: min(94vw, 960px); height: auto; min-height: auto; max-height: 46vh;
+  border-radius: 22px; overflow-x: hidden; overflow-y: auto;
+  box-shadow: inset 0 0 0 1px rgba(170,200,255,.32), inset 0 1px 0 rgba(255,255,255,.38), 0 14px 36px rgba(2,6,22,.22);
+  border: 1px solid rgba(170,200,255,.30);
 }
 .vl-root[data-dock="top"] .vl-glass .vl-g-ui {
-  position: relative; inset: auto; min-height: var(--vl-dock-h, 42vh); width: 100%;
-  transform: none; padding: max(8px, env(safe-area-inset-top, 0px)) 16px 12px;
+  position: relative; inset: auto; min-height: auto; width: 100%;
+  transform: none; padding: 8px 14px 10px;
 }
-.vl-root[data-dock="top"] .vl-glass .vl-g-pane { inset: 0; }
-.vl-root[data-dock="top"] .vl-g-stage { flex-direction: column; gap: 4px; padding: 2px 0 6px; }
-.vl-root[data-dock="top"] .vl-g-tap, .vl-root[data-dock="top"] .vl-g-hint { position: relative; top: auto; left: auto; transform: none; margin-top: -10px; }
-.vl-root[data-dock="top"] .vl-g-tap { padding: 8px 14px; gap: 2px; }
-.vl-root[data-dock="top"] .vl-g-tap strong { font-size: clamp(15px, 1.8vw, 19px); }
-.vl-root[data-dock="top"] .vl-g-tap span { font-size: 12px; }
-.vl-root[data-dock="top"] .vl-g-hint { font-size: 12px; padding: 4px 12px; }
-.vl-root[data-dock="top"] .vl-g-bottom { gap: 6px; }
-.vl-root[data-dock="top"] .vl-g-line { font-size: clamp(14px, 1.6vw, 17px); padding: 7px 14px; max-height: 14vh; }
-.vl-root[data-dock="top"] .vl-g-card { padding: 10px 14px; border-radius: 16px; }
-.vl-root[data-dock="top"] .vl-g-ctext { font-size: 14.5px; }
+.vl-root[data-dock="top"] .vl-glass .vl-g-pane { inset: 0; border-radius: 22px; }
+.vl-root[data-dock="top"] .vl-glass .vl-g-pane::after { display: none; }
+.vl-root[data-dock="top"] .vl-g-stage { flex-direction: column; gap: 2px; padding: 0 0 4px; }
+.vl-root[data-dock="top"] .vl-g-tap, .vl-root[data-dock="top"] .vl-g-hint { position: relative; top: auto; left: auto; transform: none; margin-top: -8px; }
+.vl-root[data-dock="top"] .vl-g-tap { padding: 6px 12px; gap: 2px; }
+.vl-root[data-dock="top"] .vl-g-tap strong { font-size: clamp(14px, 1.5vw, 17px); }
+.vl-root[data-dock="top"] .vl-g-tap span { font-size: 11.5px; }
+.vl-root[data-dock="top"] .vl-g-hint { font-size: 11.5px; padding: 3px 10px; }
+.vl-root[data-dock="top"] .vl-g-bottom { gap: 5px; }
+.vl-root[data-dock="top"] .vl-g-line { font-size: clamp(13.5px, 1.4vw, 15.5px); padding: 6px 12px; max-height: 11vh; }
+.vl-root[data-dock="top"] .vl-g-card { padding: 8px 12px; border-radius: 14px; }
+.vl-root[data-dock="top"] .vl-g-ctext { font-size: 13.5px; }
 .vl-root[data-dock="top"] .vl-glass[data-card="true"] .vl-g-circle { transform: translateY(-1vh) scale(.76); }
 
 /* spatial & behavioral context pill (shows current section / active product) */
@@ -396,12 +396,12 @@ button:focus-visible, input:focus-visible {
 /* the pane: blur + tint + sheen + a thin lit edge, like a real sheet of glass in front of a monitor */
 .vl-g-pane {
   position: absolute; inset: 0; pointer-events: none;
-  -webkit-backdrop-filter: blur(var(--vl-blur, 14px)) saturate(135%);
-  backdrop-filter: blur(var(--vl-blur, 14px)) saturate(135%);
+  -webkit-backdrop-filter: blur(var(--vl-blur, 4px)) saturate(135%);
+  backdrop-filter: blur(var(--vl-blur, 4px)) saturate(135%);
   background:
     linear-gradient(115deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 22%, rgba(255,255,255,0) 70%, rgba(255,255,255,.06) 100%),
-    radial-gradient(120% 90% at 50% 45%, rgba(20,40,100,calc(var(--vl-tint, .22) * .55)) 0%, rgba(4,10,30,var(--vl-tint, .22)) 70%, rgba(2,6,22,calc(var(--vl-tint, .22) + .18)) 100%);
-  box-shadow: inset 0 0 0 1px rgba(170,200,255,.22), inset 0 1px 0 rgba(255,255,255,.28), inset 0 0 90px rgba(80,130,255,.10);
+    radial-gradient(120% 90% at 50% 45%, rgba(20,40,100,calc(var(--vl-tint, .15) * .65)) 0%, rgba(4,10,30,var(--vl-tint, .15)) 70%, rgba(2,6,22,calc(var(--vl-tint, .15) + .04)) 100%);
+  box-shadow: inset 0 0 0 1px rgba(170,200,255,.22), inset 0 1px 0 rgba(255,255,255,.28), inset 0 0 90px rgba(80,130,255,.08);
   transition: background 300ms ease, backdrop-filter 300ms ease, -webkit-backdrop-filter 300ms ease;
 }
 /* while the assistant highlights something on the page, relax the blur so the highlighted element is readable */
@@ -468,16 +468,16 @@ button:focus-visible, input:focus-visible {
 .vl-glass[data-card="true"] .vl-g-hint { display: none; }
 
 /* ── bottom: captions · card · typed input · controls ── */
-.vl-g-bottom { width: min(100%, 640px); margin: 0 auto; display: flex; flex-direction: column; align-items: stretch; gap: 8px; pointer-events: none; }
+.vl-g-bottom { width: min(100%, 900px); margin: 0 auto; display: flex; flex-direction: column; align-items: stretch; gap: 8px; pointer-events: none; }
 .vl-g-bottom > * { pointer-events: auto; }
 .vl-g-user, .vl-g-interim, .vl-g-line { margin: 0; text-align: center; text-shadow: 0 1px 14px rgba(0,8,30,.9); pointer-events: none; }
-.vl-g-user { font-size: 13px; color: #a8c4ff; font-style: italic; }
+.vl-g-user { font-size: 14px; color: #a8c4ff; font-style: italic; }
 .vl-g-user:empty, .vl-g-interim:empty, .vl-g-line:empty { display: none; }
-.vl-g-interim { font-size: 14px; color: #cfe0ff; font-style: italic; }
+.vl-g-interim { font-size: 16px; color: #cfe0ff; font-style: italic; }
 .vl-g-line {
-  font-size: clamp(16px, 2.1vw, 21px); line-height: 1.4; font-weight: 500; padding: 10px 16px; border-radius: 18px; align-self: center; max-width: 100%;
+  font-size: clamp(19px, 2.6vw, 27px); line-height: 1.38; font-weight: 500; padding: 10px 16px; border-radius: 18px; align-self: center; max-width: 100%;
   background: rgba(8,16,44,.42); border: 1px solid rgba(170,200,255,.18); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  max-height: 22vh; overflow-y: auto; pointer-events: auto;
+  max-height: 34vh; overflow-y: auto; pointer-events: auto;
 }
 .vl-g-line[data-kind="sys"] { font-size: 13px; color: #b9cbf1; background: transparent; border-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
 
