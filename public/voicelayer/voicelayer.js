@@ -175,7 +175,7 @@
   // opened from disk (file://) a relative API path can't work: use browser voice, make no network calls
   if (location.protocol === 'file:' && !/^https?:/i.test(CONFIG.apiBase)) CONFIG.apiBase = '';
 
-  const VERSION = '0.7.3';
+  const VERSION = '0.7.4';
   const STATES = ['idle', 'listening', 'thinking', 'speaking'];
   const log = function () { if (CONFIG.debug) console.log.apply(console, ['[VoiceLayer]'].concat([].slice.call(arguments))); };
 

@@ -377,7 +377,7 @@ button:focus-visible, input:focus-visible {
 .vl-root[data-dock="top"] .vl-g-tap span { font-size: 11.5px; }
 .vl-root[data-dock="top"] .vl-g-hint { font-size: 11.5px; padding: 3px 10px; }
 .vl-root[data-dock="top"] .vl-g-bottom { gap: 5px; }
-.vl-root[data-dock="top"] .vl-g-line { font-size: clamp(13.5px, 1.4vw, 15.5px); padding: 6px 12px; max-height: 11vh; }
+.vl-root[data-dock="top"] .vl-g-line { font-size: clamp(18px, 2.1vw, 23px); line-height: 1.4; padding: 8px 16px; max-height: 20vh; }
 .vl-root[data-dock="top"] .vl-g-card { padding: 8px 12px; border-radius: 14px; }
 .vl-root[data-dock="top"] .vl-g-ctext { font-size: 13.5px; }
 .vl-root[data-dock="top"] .vl-glass[data-card="true"] .vl-g-circle { transform: translateY(-1vh) scale(.76); }
