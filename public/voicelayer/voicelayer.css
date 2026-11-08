@@ -573,3 +573,11 @@ button:focus-visible, input:focus-visible {
 .vl-g-ctrl .vl-off { color: #e6efff; background: rgba(6,14,40,.55); border: 1px solid rgba(170,200,255,.25); padding: 7px 14px; border-radius: 999px; text-decoration: none; font-size: 12.5px; }
 .vl-g-ctrl .vl-off:hover { background: rgba(70,110,220,.5); }
 .vl-g-pane::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(4,10,30,.22) 0%, rgba(4,10,30,0) 18%, rgba(4,10,30,0) 55%, rgba(4,10,30,.34) 100%); }
+
+/* ── mobile: shrink the dock-top circle & tap text so the site stays usable ── */
+@media (max-width: 640px) {
+  .vl-root[data-dock="top"] .vl-g-circle { transform: scale(.68); transform-origin: center; }
+  .vl-root[data-dock="top"] .vl-g-tap strong { font-size: 16px; }
+  .vl-root[data-dock="top"] .vl-g-tap span { font-size: 11.5px; }
+  .vl-root[data-dock="top"] .vl-g-ui { padding: 6px 10px 8px; }
+}
