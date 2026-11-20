@@ -605,7 +605,7 @@ button:focus-visible, input:focus-visible {
 .vl-g-circle[data-listening="true"] .vl-liquid { animation-duration: 2.8s, 1.6s; }
 
 /* soft ground shadow — the blob levitates over the page */
-.vl-levitate { position: absolute; left: 14%; right: 14%; bottom: -14%; height: 16%;
+.vl-levitate { position: absolute; left: 50%; bottom: -10%; width: 118px; margin-left: -59px; height: 15%;
   border-radius: 50%; background: rgba(10, 14, 12, 0.30); filter: blur(9px); pointer-events: none;
   animation: vl-levitate 4.2s cubic-bezier(.45,0,.55,1) infinite; will-change: transform, opacity;
 }
