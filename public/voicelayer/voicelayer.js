@@ -175,7 +175,7 @@
   // opened from disk (file://) a relative API path can't work: use browser voice, make no network calls
   if (location.protocol === 'file:' && !/^https?:/i.test(CONFIG.apiBase)) CONFIG.apiBase = '';
 
-  const VERSION = '0.8.0';
+  const VERSION = '0.8.1';
   const STATES = ['idle', 'listening', 'thinking', 'speaking'];
   const log = function () { if (CONFIG.debug) console.log.apply(console, ['[VoiceLayer]'].concat([].slice.call(arguments))); };
 
@@ -3686,7 +3686,7 @@
               '<button class="vl-g-ib" type="button" id="vl-g-x">' + ICON.close + '</button>' +
             '</header>' +
             '<main class="vl-g-stage">' +
-              '<button class="vl-g-circle" type="button" id="vl-g-circle"><span class="vl-liquid" aria-hidden="true"><i class="vl-liquid-core"></i></span><canvas id="vl-g-canvas" aria-hidden="true"></canvas></button>' +
+              '<button class="vl-g-circle" type="button" id="vl-g-circle"><span class="vl-levitate" aria-hidden="true"></span><span class="vl-liquid" aria-hidden="true"><i class="vl-liquid-core"></i></span><canvas id="vl-g-canvas" aria-hidden="true"></canvas></button>' +
               '<div class="vl-g-tap" id="vl-g-tap"><strong id="vl-g-tap1"></strong><span id="vl-g-tap2"></span></div>' +
               '<p class="vl-g-hint" id="vl-g-hint"></p>' +
             '</main>' +
