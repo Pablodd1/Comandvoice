@@ -175,7 +175,7 @@
   // opened from disk (file://) a relative API path can't work: use browser voice, make no network calls
   if (location.protocol === 'file:' && !/^https?:/i.test(CONFIG.apiBase)) CONFIG.apiBase = '';
 
-  const VERSION = '0.8.2';
+  const VERSION = '0.7.5';
   const STATES = ['idle', 'listening', 'thinking', 'speaking'];
   const log = function () { if (CONFIG.debug) console.log.apply(console, ['[VoiceLayer]'].concat([].slice.call(arguments))); };
 
@@ -3686,7 +3686,7 @@
               '<button class="vl-g-ib" type="button" id="vl-g-x">' + ICON.close + '</button>' +
             '</header>' +
             '<main class="vl-g-stage">' +
-              '<button class="vl-g-circle" type="button" id="vl-g-circle"><span class="vl-levitate" aria-hidden="true"></span><span class="vl-liquid" aria-hidden="true"><i class="vl-liquid-core"></i></span><canvas id="vl-g-canvas" aria-hidden="true"></canvas></button>' +
+              '<button class="vl-g-circle" type="button" id="vl-g-circle"><canvas id="vl-g-canvas" aria-hidden="true"></canvas></button>' +
               '<div class="vl-g-tap" id="vl-g-tap"><strong id="vl-g-tap1"></strong><span id="vl-g-tap2"></span></div>' +
               '<p class="vl-g-hint" id="vl-g-hint"></p>' +
             '</main>' +
@@ -3844,49 +3844,7 @@
       });
 
       if (G) {
-        
-        // --- glass pill drag (handle: the circle). Tap still toggles listening. ---
-        (function () {
-          var gp = null;
-          var placeGlass = function (x, y) {
-            var w = self.glass.offsetWidth, h = self.glass.offsetHeight;
-            var x2 = clamp(x, 8, Math.max(8, innerWidth - w - 8));
-            var y2 = clamp(y, 8, Math.max(8, innerHeight - h - 8));
-            self.glass.style.left = x2 + 'px'; self.glass.style.top = y2 + 'px';
-            self.glass.style.right = 'auto'; self.glass.style.transform = 'none';
-            root.setAttribute('data-dragged', 'true');
-          };
-          var saveGlass = function () {
-            try { store.set('vl-glasspos', JSON.stringify({ l: self.glass.style.left, t: self.glass.style.top })); } catch (e) {}
-          };
-          try {
-            var saved = CONFIG.rememberPosition && store.get('vl-glasspos');
-            if (saved) { var p = JSON.parse(saved); if (p && p.l && p.t) placeGlass(parseFloat(p.l), parseFloat(p.t)); }
-          } catch (e) {}
-          self.gcircle.addEventListener('pointerdown', function (e) {
-            if (e.pointerType === 'mouse' && e.button !== 0) return;
-            var r = self.glass.getBoundingClientRect();
-            gp = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top, moved: false };
-            try { self.gcircle.setPointerCapture(e.pointerId); } catch (x) {}
-          });
-          self.gcircle.addEventListener('pointermove', function (e) {
-            if (!gp) return;
-            var dx = e.clientX - gp.sx, dy = e.clientY - gp.sy;
-            if (!gp.moved && Math.hypot(dx, dy) < 7) return;
-            gp.moved = true;
-            placeGlass(gp.ox + dx, gp.oy + dy);
-          });
-          var endG = function () {
-            if (gp && gp.moved) { self._suppressUntil = performance.now() + 400; saveGlass(); }
-            gp = null;
-          };
-          self.gcircle.addEventListener('pointerup', endG);
-          self.gcircle.addEventListener('pointercancel', endG);
-        })();
-        this.gcircle.addEventListener('click', function () {
-          if (performance.now() < self._suppressUntil) return;
-          self.h.onCircle && self.h.onCircle();
-        });
+        this.gcircle.addEventListener('click', function () { self.h.onCircle && self.h.onCircle(); });
         $('vl-g-pause').addEventListener('click', function () { self.h.onPause && self.h.onPause(); });
         $('vl-g-x').addEventListener('click', function () { self.h.onClose && self.h.onClose(); });
         $('vl-g-stop').addEventListener('click', function () { self.h.onStop && self.h.onStop(); });

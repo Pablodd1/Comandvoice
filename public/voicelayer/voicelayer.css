@@ -359,17 +359,11 @@ button:focus-visible, input:focus-visible {
 
 /* ---- DOCK: 'top' — Version 1: compact floating top pill over the page so 95%+ of the site stays visible ---- */
 .vl-root[data-dock="top"] .vl-glass {
-  /* centered compact pill; drag handle = the circle; position persists (vl-glasspos) */
-  inset: auto; left: 50%; top: 44%; transform: translate(-50%, -50%);
-  width: min(92vw, 600px); height: auto; min-height: auto; max-height: min(72vh, 560px);
-  border-radius: 22px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
-  box-shadow: inset 0 0 0 1px rgba(170,200,255,.30), inset 0 1px 0 rgba(255,255,255,.34), 0 22px 60px rgba(2,6,22,.35);
-  border: 1px solid rgba(170,200,255,.30); cursor: default;
+  inset: 10px auto auto 50%; transform: translateX(-50%); width: min(94vw, 960px); height: auto; min-height: auto; max-height: 46vh;
+  border-radius: 22px; overflow-x: hidden; overflow-y: auto;
+  box-shadow: inset 0 0 0 1px rgba(170,200,255,.32), inset 0 1px 0 rgba(255,255,255,.38), 0 14px 36px rgba(2,6,22,.22);
+  border: 1px solid rgba(170,200,255,.30);
 }
-.vl-root[data-dock="top"][data-dragged="true"] .vl-glass { transform: none; }
-.vl-root[data-dock="top"] .vl-g-circle { pointer-events: auto; cursor: grab; touch-action: none; }
-.vl-root[data-dock="top"] .vl-g-circle:active { cursor: grabbing; }
-.vl-root[data-dock="top"] .vl-g-line { overscroll-behavior: contain; }
 .vl-root[data-dock="top"] .vl-glass .vl-g-ui {
   position: relative; inset: auto; min-height: auto; width: 100%;
   transform: none; padding: 8px 14px 10px;
@@ -586,67 +580,4 @@ button:focus-visible, input:focus-visible {
   .vl-root[data-dock="top"] .vl-g-tap strong { font-size: 16px; }
   .vl-root[data-dock="top"] .vl-g-tap span { font-size: 11.5px; }
   .vl-root[data-dock="top"] .vl-g-ui { padding: 6px 10px 8px; }
-}
-
-
-/* ── LIQUID BLACK orb (0.8.1) — reference-matched: pure glossy black metaball,
-   squash-and-stretch bounce, soft levitation shadow. No colors, no spin. ── */
-.vl-liquid { position: absolute; inset: 6%; border-radius: 46% 54% 52% 48% / 50% 46% 54% 50%; overflow: hidden; pointer-events: none;
-  background:
-    radial-gradient(circle at 31% 24%, rgba(255,255,255,.42), rgba(255,255,255,0) 34%),
-    radial-gradient(ellipse at 78% 12%, rgba(255,255,255,.14), rgba(255,255,255,0) 42%),
-    radial-gradient(circle at 68% 82%, rgba(255,255,255,.07), rgba(255,255,255,0) 40%),
-    radial-gradient(circle at 50% 42%, #2e2e33 0%, #1a1a1f 52%, #0b0b0e 100%);
-  box-shadow: inset 0 -14px 26px rgba(0,0,0,.72), inset 0 2px 6px rgba(255,255,255,.14);
-  animation: vl-blob 6.5s ease-in-out infinite, vl-squash 4.2s cubic-bezier(.45,0,.55,1) infinite;
-  will-change: border-radius, transform;
-}
-.vl-liquid-core { position: absolute; inset: 0; background: none; animation: none; }
-.vl-g-circle[data-listening="true"] .vl-liquid { animation-duration: 2.8s, 1.6s; }
-
-/* soft ground shadow — the blob levitates over the page */
-.vl-levitate { position: absolute; left: 50%; bottom: -10%; width: 118px; margin-left: -59px; height: 15%;
-  border-radius: 50%; background: rgba(10, 14, 12, 0.30); filter: blur(9px); pointer-events: none;
-  animation: vl-levitate 4.2s cubic-bezier(.45,0,.55,1) infinite; will-change: transform, opacity;
-}
-
-@keyframes vl-blob {
-  0%, 100% { border-radius: 46% 54% 52% 48% / 50% 46% 54% 50%; }
-  25%      { border-radius: 54% 46% 47% 53% / 46% 53% 47% 54%; }
-  50%      { border-radius: 47% 53% 55% 45% / 54% 46% 53% 47%; }
-  75%      { border-radius: 52% 48% 46% 54% / 48% 55% 45% 52%; }
-}
-@keyframes vl-squash {
-  0%, 100% { transform: scale(1, 1) translateY(0); }
-  30%      { transform: scale(1.045, 0.955) translateY(2.5%); }
-  60%      { transform: scale(0.965, 1.035) translateY(-3%); }
-  80%      { transform: scale(1.02, 0.985) translateY(1%); }
-}
-@keyframes vl-levitate {
-  0%, 100% { transform: scaleX(1); opacity: .55; }
-  60%      { transform: scaleX(.86); opacity: .38; }
-}
-
-/* ── IDLE = blob only (no pill frame): the reference is a standalone floating droplet ── */
-.vl-root[data-dock="top"] .vl-glass[data-awake="false"] {
-  background: transparent; border: 0; box-shadow: none;
-  width: auto; max-height: none; overflow: visible; pointer-events: none;
-  -webkit-backdrop-filter: none; backdrop-filter: none;
-}
-.vl-root[data-dock="top"] .vl-glass[data-awake="false"] .vl-g-pane { display: none; }
-.vl-root[data-dock="top"] .vl-glass[data-awake="false"] .vl-g-ui { padding: 0; pointer-events: none; }
-.vl-root[data-dock="top"] .vl-glass[data-awake="false"] .vl-g-ui header,
-.vl-root[data-dock="top"] .vl-glass[data-awake="false"] .vl-g-bottom { display: none !important; }
-.vl-root[data-dock="top"] .vl-glass[data-awake="false"] .vl-g-hint { display: none !important; }
-.vl-root[data-dock="top"] .vl-glass[data-awake="false"] .vl-g-circle {
-  pointer-events: auto; transform: scale(1.5); margin-bottom: 14px;
-}
-.vl-root[data-dock="top"] .vl-glass[data-awake="false"] .vl-g-tap {
-  padding: 0; margin-top: 10px; text-shadow: 0 1px 10px rgba(255,255,255,.65);
-}
-.vl-root[data-dock="top"] .vl-glass[data-awake="false"] .vl-g-tap strong { color: #16241f; }
-.vl-root[data-dock="top"] .vl-glass[data-awake="false"] .vl-g-tap span { color: #4c635c; }
-
-@media (max-width: 640px) {
-  .vl-root[data-dock="top"] .vl-glass[data-awake="false"] .vl-g-circle { transform: scale(1.15); margin-bottom: 8px; }
 }
